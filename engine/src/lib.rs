@@ -6,7 +6,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub struct Engine {
     events_loop: EventsLoop,
 
-    renderer: renderer::VkRenderer,
+    renderer: renderer::VulkanRenderer,
 }
 
 impl Engine {
@@ -18,7 +18,7 @@ impl Engine {
 
         let events_loop = EventsLoop::new();
 
-        let renderer = renderer::VkRenderer::new(&events_loop)?;
+        let renderer = renderer::VulkanRenderer::new(&events_loop)?;
         renderer.get_window().set_title(&appid.into());
 
         Ok(Self {

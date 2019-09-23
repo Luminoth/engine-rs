@@ -5,16 +5,17 @@ use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::pool::standard::StandardCommandPoolBuilder;
 use vulkano::command_buffer::AutoCommandBufferBuilder;
 use vulkano::device::{Device, DeviceExtensions, Features, Queue};
-use vulkano::image::SwapchainImage;
+use vulkano::format::FormatDesc;
+use vulkano::image::{Dimensions, StorageImage, SwapchainImage};
 use vulkano::instance::{Instance, PhysicalDevice};
 use vulkano::memory::Content;
 use vulkano::swapchain::{PresentMode, Surface, SurfaceTransform, Swapchain};
 use vulkano_win::VkSurfaceBuild;
 use winit::{EventsLoop, Window, WindowBuilder};
 
-use crate::Result;
+use crate::*;
 
-pub struct VkRenderer {
+pub struct VulkanRenderer {
     instance: Arc<Instance>,
 
     device: Arc<Device>,
@@ -27,7 +28,7 @@ pub struct VkRenderer {
     swapchain_images: Vec<Arc<SwapchainImage<Window>>>,
 }
 
-impl VkRenderer {
+impl VulkanRenderer {
     pub fn new(events_loop: &EventsLoop) -> Result<Self> {
         println!("Initializing vulkan...");
 
@@ -126,6 +127,23 @@ impl VkRenderer {
         )?)
     }
 
+    pub fn create_image_2d<F>(
+        &self,
+        width: u32,
+        height: u32,
+        format: F,
+    ) -> Result<Arc<StorageImage<F>>>
+    where
+        F: FormatDesc,
+    {
+        Ok(StorageImage::new(
+            self.device.clone(),
+            Dimensions::Dim2d { width, height },
+            format,
+            Some(self.graphics_queue.family()),
+        )?)
+    }
+
     pub fn create_command_buffer(
         &self,
     ) -> Result<AutoCommandBufferBuilder<StandardCommandPoolBuilder>> {
@@ -134,4 +152,14 @@ impl VkRenderer {
             self.graphics_queue.family(),
         )?)
     }
+
+    /*pub fn create_simple_render_pass(&self) {
+        Ok(Arc::new(vulkano::single_pass_renderpass!(
+            self.device.clone(),
+            attachments,
+            pass
+        )?))
+    }*/
 }
+
+impl Renderer for VulkanRenderer {}
