@@ -1,5 +1,14 @@
+pub mod actor;
+mod quaternion;
+mod transform;
+mod vector;
+
 use failure::Error;
 use winit::EventsLoop;
+
+pub use quaternion::*;
+pub use transform::*;
+pub use vector::*;
 
 pub type Result<T> = std::result::Result<T, Error>;
 

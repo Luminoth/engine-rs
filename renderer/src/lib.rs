@@ -1,8 +1,8 @@
 mod vulkan;
 
-pub use vulkan::*;
-
 use failure::Error;
+
+pub use vulkan::*;
 
 pub type Result<T> = std::result::Result<T, Error>;
 

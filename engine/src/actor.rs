@@ -5,9 +5,16 @@ pub struct Actor {
 }
 
 impl Actor {
-    pub fn new() -> Self {
+    pub fn new<S>(id: S) -> Self
+    where
+        S: Into<String>,
+    {
         Self {
-            entity: Entity::new(),
+            entity: Entity::new(id),
         }
+    }
+
+    pub fn get_entity(&self) -> &Entity {
+        &self.entity
     }
 }
