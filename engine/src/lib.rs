@@ -19,11 +19,11 @@ impl Engine {
         let events_loop = EventsLoop::new();
 
         let renderer = renderer::VkRenderer::new(&events_loop)?;
-        renderer.get_surface().window().set_title(&appid.into());
+        renderer.get_window().set_title(&appid.into());
 
         Ok(Self {
             events_loop,
-            renderer,
+            renderer: renderer,
         })
     }
 
