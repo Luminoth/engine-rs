@@ -3,6 +3,8 @@ mod quaternion;
 mod transform;
 mod vector;
 
+use std::sync::Arc;
+
 use failure::Error;
 use winit::EventsLoop;
 
@@ -15,7 +17,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub struct Engine {
     events_loop: EventsLoop,
 
-    renderer: renderer::VulkanRenderer,
+    renderer: Arc<renderer::VulkanRenderer>,
 }
 
 impl Engine {
@@ -32,8 +34,12 @@ impl Engine {
 
         Ok(Self {
             events_loop,
-            renderer: renderer,
+            renderer: Arc::new(renderer),
         })
+    }
+
+    pub fn get_renderer(&self) -> &Arc<renderer::VulkanRenderer> {
+        &self.renderer
     }
 
     pub fn run(&mut self) {

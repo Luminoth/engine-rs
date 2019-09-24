@@ -30,11 +30,11 @@ pub struct VulkanRenderer {
 
 impl VulkanRenderer {
     pub fn new(events_loop: &EventsLoop) -> Result<Self> {
-        println!("Initializing vulkan renderer...");
-
         let extensions = vulkano_win::required_extensions();
         // TODO: what about application-required extensions?
 
+        println!("Initializing vulkan renderer...
+\tExtensions: {:?}", extensions);
         let instance = Instance::new(None, &extensions, None)?;
 
         // TODO: need to do application requirement filtering here
@@ -130,6 +130,8 @@ impl VulkanRenderer {
         self.surface.window()
     }
 
+    //#region CPU Buffers
+
     pub fn create_cpu_buffer<T>(&self, data: T) -> Result<Arc<CpuAccessibleBuffer<T>>>
     where
         T: Content + 'static,
@@ -140,6 +142,29 @@ impl VulkanRenderer {
             data,
         )?)
     }
+
+    pub fn create_cpu_buffer_iter<V, T>(&self, data: V) -> Result<Arc<CpuAccessibleBuffer<[T]>>>
+    where
+        V: AsRef<Vec<T>>,
+        T: Content + Clone + 'static,
+    {
+        Ok(CpuAccessibleBuffer::from_iter(
+            self.device.clone(),
+            BufferUsage::all(),
+            data.as_ref().iter().cloned(),
+        )?)
+    }
+
+    pub fn create_vertex_buffer<V>(&self, vertices: V) -> Result<Arc<CpuAccessibleBuffer<[Vertex]>>>
+    where
+        V: AsRef<Vec<Vertex>>,
+    {
+        self.create_cpu_buffer_iter(vertices)
+    }
+
+    //#endregion
+
+    //#region Images
 
     pub fn create_image_2d<F>(
         &self,
@@ -158,6 +183,20 @@ impl VulkanRenderer {
         )?)
     }
 
+    //#endregion
+
+    //#region Shaders
+
+    // TODO: probably have to customize this so we have a trait to genericize against
+
+    pub fn load_simple_shader(&self) -> Result<shaders::simple::vs::Shader> {
+        Ok(shaders::simple::vs::Shader::load(self.device.clone())?)
+    }
+
+    //#endregion
+
+    //#region Command Buffers
+
     pub fn create_command_buffer(
         &self,
     ) -> Result<AutoCommandBufferBuilder<StandardCommandPoolBuilder>> {
@@ -166,6 +205,8 @@ impl VulkanRenderer {
             self.graphics_queue.family(),
         )?)
     }
+
+    //#endregion
 
     /*pub fn create_simple_render_pass(&self) {
         Ok(Arc::new(vulkano::single_pass_renderpass!(

@@ -1,3 +1,4 @@
+pub mod shaders;
 mod vulkan;
 
 use failure::Error;
