@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
-use failure::format_err;
+use failure::{bail, format_err};
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::pool::standard::StandardCommandPoolBuilder;
 use vulkano::command_buffer::AutoCommandBufferBuilder;
-use vulkano::device::{Device, DeviceExtensions, Features, Queue};
+use vulkano::device::{Device, DeviceExtensions, Queue};
 use vulkano::format::FormatDesc;
 use vulkano::image::{Dimensions, StorageImage, SwapchainImage};
 use vulkano::instance::{Instance, PhysicalDevice};
@@ -30,12 +30,16 @@ pub struct VulkanRenderer {
 
 impl VulkanRenderer {
     pub fn new(events_loop: &EventsLoop) -> Result<Self> {
-        println!("Initializing vulkan...");
+        println!("Initializing vulkan renderer...");
 
         let extensions = vulkano_win::required_extensions();
+        // TODO: what about application-required extensions?
 
         let instance = Instance::new(None, &extensions, None)?;
 
+        // TODO: need to do application requirement filtering here
+        // and should allow the application to select between
+        // all devices that fit within those constraints
         let physical_device = PhysicalDevice::enumerate(&instance)
             .next()
             .ok_or_else(|| format_err!("No devices available!"))?;
@@ -51,9 +55,12 @@ impl VulkanRenderer {
             physical_device.supported_features(),
         );
 
+        println!("Creating surface...");
+        let surface = WindowBuilder::new().build_vk_surface(events_loop, instance.clone())?;
+
         let graphics_queue_family = physical_device
             .queue_families()
-            .find(|&q| q.supports_graphics())
+            .find(|&q| q.supports_graphics() && surface.is_supported(q).unwrap_or(false))
             .ok_or_else(|| format_err!("No graphics queues available!"))?;
 
         let device_ext = DeviceExtensions {
@@ -61,19 +68,16 @@ impl VulkanRenderer {
             ..DeviceExtensions::none()
         };
 
+        println!("Creating device...");
         let (device, mut graphics_queues) = Device::new(
             physical_device,
-            &Features::none(),
+            physical_device.supported_features(),
             &device_ext,
             [(graphics_queue_family, 0.5)].iter().cloned(),
         )?;
         let graphics_queue = graphics_queues.next().unwrap();
 
-        println!("Creating surface...");
-        let surface = WindowBuilder::new().build_vk_surface(events_loop, instance.clone())?;
-
         let capabilities = surface.capabilities(physical_device)?;
-        let dimensions = capabilities.current_extent.unwrap_or([1280, 1024]);
         let alpha = capabilities
             .supported_composite_alpha
             .iter()
@@ -81,13 +85,23 @@ impl VulkanRenderer {
             .unwrap();
         let format = capabilities.supported_formats[0].0;
 
+        let initial_dimensions = if let Some(dimensions) = surface.window().get_inner_size() {
+            // convert to physical pixels
+            let dimensions: (u32, u32) = dimensions
+                .to_physical(surface.window().get_hidpi_factor())
+                .into();
+            [dimensions.0, dimensions.1]
+        } else {
+            bail!("Window no longer exists!");
+        };
+
         println!("Creating swapchain...");
         let (swapchain, swapchain_images) = Swapchain::new(
             device.clone(),
             surface.clone(),
             capabilities.min_image_count,
             format,
-            dimensions,
+            initial_dimensions,
             1,
             capabilities.supported_usage_flags,
             &graphics_queue,
