@@ -3,16 +3,15 @@ use std::sync::Arc;
 use failure::{bail, format_err};
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::pool::standard::StandardCommandPoolBuilder;
-use vulkano::command_buffer::AutoCommandBufferBuilder;
-use vulkano::descriptor::PipelineLayoutAbstract;
+use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState};
 use vulkano::device::{Device, DeviceExtensions, Queue};
 use vulkano::format::FormatDesc;
-use vulkano::framebuffer::{RenderPass, RenderPassDesc, Subpass};
+use vulkano::framebuffer::{Framebuffer, FramebufferAbstract, RenderPassAbstract, Subpass};
 use vulkano::image::{Dimensions, StorageImage, SwapchainImage};
 use vulkano::instance::{Instance, PhysicalDevice};
 use vulkano::memory::Content;
-use vulkano::pipeline::vertex::SingleBufferDefinition;
-use vulkano::pipeline::GraphicsPipeline;
+use vulkano::pipeline::viewport::Viewport;
+use vulkano::pipeline::{GraphicsPipeline, GraphicsPipelineAbstract};
 use vulkano::swapchain::{PresentMode, Surface, SurfaceTransform, Swapchain};
 use vulkano_win::VkSurfaceBuild;
 use winit::{EventsLoop, Window, WindowBuilder};
@@ -30,6 +29,10 @@ pub struct VulkanRenderer {
 
     swapchain: Arc<Swapchain<Window>>,
     swapchain_images: Vec<Arc<SwapchainImage<Window>>>,
+
+    framebuffers: Vec<Arc<dyn FramebufferAbstract + Send + Sync>>,
+
+    dynamic_state: DynamicState,
 }
 
 impl VulkanRenderer {
@@ -126,6 +129,8 @@ impl VulkanRenderer {
             surface,
             swapchain,
             swapchain_images,
+            framebuffers: Vec::new(),
+            dynamic_state: DynamicState::none(),
         })
     }
 
@@ -219,9 +224,39 @@ impl VulkanRenderer {
 
     //#endregion
 
-    // TODO: make this more configurable
-    pub fn create_render_pass(&self) -> Result<Arc<RenderPass<impl RenderPassDesc>>> {
-        let render_pass = vulkano::single_pass_renderpass!(
+    //#region Frame Buffers
+
+    pub fn create_frame_buffers(&mut self, render_pass: Arc<dyn RenderPassAbstract + Send + Sync>) {
+        let dimensions = self.swapchain_images[0].dimensions();
+
+        let viewport = Viewport {
+            origin: [0.0, 0.0],
+            dimensions: [dimensions[0] as f32, dimensions[1] as f32],
+            depth_range: 0.0..1.0,
+        };
+        self.dynamic_state.viewports = Some(vec![viewport]);
+
+        self.framebuffers = self
+            .swapchain_images
+            .iter()
+            .map(|image| {
+                Arc::new(
+                    Framebuffer::start(render_pass.clone())
+                        .add(image.clone())
+                        .unwrap()
+                        .build()
+                        .unwrap(),
+                ) as Arc<dyn FramebufferAbstract + Send + Sync>
+            })
+            .collect::<Vec<_>>();
+    }
+
+    //#endregion
+
+    pub fn create_simple_render_pass(&self) -> Result<Arc<dyn RenderPassAbstract + Send + Sync>> {
+        println!("Creating simple render pass...");
+
+        Ok(Arc::new(vulkano::single_pass_renderpass!(
             self.device.clone(),
             attachments: {
                 color: {
@@ -235,36 +270,27 @@ impl VulkanRenderer {
                 color: [color],
                 depth_stencil: {}
             }
-        )?;
-
-        Ok(Arc::new(render_pass))
+        )?))
     }
 
-    // TODO: make this more configurable
-    pub fn create_pipeline(
+    pub fn create_simple_pipeline(
         &self,
-        render_pass: Arc<RenderPass<impl RenderPassDesc>>,
+        render_pass: Arc<dyn RenderPassAbstract + Send + Sync>,
         vs: shaders::simple::vs::Shader,
         fs: shaders::simple::fs::Shader,
-    ) -> Result<
-        Arc<
-            GraphicsPipeline<
-                SingleBufferDefinition<Vertex>,
-                Box<dyn PipelineLayoutAbstract + Send + Sync>,
-                Arc<RenderPass<impl RenderPassDesc>>,
-            >,
-        >,
-    > {
-        let pipeline = GraphicsPipeline::start()
-            .vertex_input_single_buffer()
-            .vertex_shader(vs.main_entry_point(), ())
-            .triangle_list()
-            .viewports_dynamic_scissors_irrelevant(1)
-            .fragment_shader(fs.main_entry_point(), ())
-            .render_pass(Subpass::from(render_pass, 0).unwrap())
-            .build(self.device.clone())?;
+    ) -> Result<Arc<dyn GraphicsPipelineAbstract + Send + Sync>> {
+        println!("Creating simple pipeline...");
 
-        Ok(Arc::new(pipeline))
+        Ok(Arc::new(
+            GraphicsPipeline::start()
+                .vertex_input_single_buffer::<Vertex>()
+                .vertex_shader(vs.main_entry_point(), ())
+                .triangle_list()
+                .viewports_dynamic_scissors_irrelevant(1)
+                .fragment_shader(fs.main_entry_point(), ())
+                .render_pass(Subpass::from(render_pass, 0).unwrap())
+                .build(self.device.clone())?,
+        ))
     }
 }
 

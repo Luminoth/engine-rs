@@ -222,6 +222,7 @@ version = "0.1.0"
 dependencies = [
  "ecs 0.1.0",
  "failure 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
+ "parking_lot 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "renderer 0.1.0",
  "winit 0.19.3 (registry+https://github.com/rust-lang/crates.io-index)",
 ]

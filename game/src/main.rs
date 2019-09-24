@@ -11,20 +11,26 @@ fn main() -> Result<(), Error> {
     println!("Loading shaders...");
     let (vs, fs) = engine
         .get_renderer()
+        .read()
         .load_simple_shader()
         .unwrap_or_else(|e| panic!("Error loading simple shader: {}", e));
 
-    println!("Creating render pass...");
     let render_pass = engine
         .get_renderer()
-        .create_render_pass()
+        .read()
+        .create_simple_render_pass()
         .unwrap_or_else(|e| panic!("Error creating render pass: {}", e));
 
-    println!("Creating pipeline...");
     let pipeline = engine
         .get_renderer()
-        .create_pipeline(render_pass, vs, fs)
+        .read()
+        .create_simple_pipeline(render_pass.clone(), vs, fs)
         .unwrap_or_else(|e| panic!("Error creating pipeline: {}", e));
+
+    engine
+        .get_renderer()
+        .write()
+        .create_frame_buffers(render_pass.clone());
 
     engine.run();
 

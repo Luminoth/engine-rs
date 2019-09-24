@@ -6,6 +6,7 @@ mod vector;
 use std::sync::Arc;
 
 use failure::Error;
+use parking_lot::RwLock;
 use winit::EventsLoop;
 
 pub use quaternion::*;
@@ -17,7 +18,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub struct Engine {
     events_loop: EventsLoop,
 
-    renderer: Arc<renderer::VulkanRenderer>,
+    renderer: Arc<RwLock<renderer::VulkanRenderer>>,
 }
 
 impl Engine {
@@ -34,23 +35,36 @@ impl Engine {
 
         Ok(Self {
             events_loop,
-            renderer: Arc::new(renderer),
+            renderer: Arc::new(RwLock::new(renderer)),
         })
     }
 
-    pub fn get_renderer(&self) -> &Arc<renderer::VulkanRenderer> {
+    pub fn get_renderer(&self) -> &Arc<RwLock<renderer::VulkanRenderer>> {
         &self.renderer
     }
 
     pub fn run(&mut self) {
         println!("Running...");
 
-        self.events_loop.run_forever(|event| match event {
-            winit::Event::WindowEvent {
-                event: winit::WindowEvent::CloseRequested,
-                ..
-            } => winit::ControlFlow::Break,
-            _ => winit::ControlFlow::Continue,
-        });
+        loop {
+            let mut quit = false;
+            let mut recreate_swapchain = false;
+
+            self.events_loop.poll_events(|event| match event {
+                winit::Event::WindowEvent {
+                    event: winit::WindowEvent::CloseRequested,
+                    ..
+                } => quit = true,
+                winit::Event::WindowEvent {
+                    event: winit::WindowEvent::Resized(_),
+                    ..
+                } => recreate_swapchain = true,
+                _ => (),
+            });
+
+            if quit {
+                break;
+            }
+        }
     }
 }
