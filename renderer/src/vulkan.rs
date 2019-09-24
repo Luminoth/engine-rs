@@ -4,11 +4,15 @@ use failure::{bail, format_err};
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::pool::standard::StandardCommandPoolBuilder;
 use vulkano::command_buffer::AutoCommandBufferBuilder;
+use vulkano::descriptor::PipelineLayoutAbstract;
 use vulkano::device::{Device, DeviceExtensions, Queue};
 use vulkano::format::FormatDesc;
+use vulkano::framebuffer::{RenderPass, RenderPassDesc, Subpass};
 use vulkano::image::{Dimensions, StorageImage, SwapchainImage};
 use vulkano::instance::{Instance, PhysicalDevice};
 use vulkano::memory::Content;
+use vulkano::pipeline::vertex::SingleBufferDefinition;
+use vulkano::pipeline::GraphicsPipeline;
 use vulkano::swapchain::{PresentMode, Surface, SurfaceTransform, Swapchain};
 use vulkano_win::VkSurfaceBuild;
 use winit::{EventsLoop, Window, WindowBuilder};
@@ -33,8 +37,11 @@ impl VulkanRenderer {
         let extensions = vulkano_win::required_extensions();
         // TODO: what about application-required extensions?
 
-        println!("Initializing vulkan renderer...
-\tExtensions: {:?}", extensions);
+        println!(
+            "Initializing vulkan renderer...
+\tExtensions: {:?}",
+            extensions
+        );
         let instance = Instance::new(None, &extensions, None)?;
 
         // TODO: need to do application requirement filtering here
@@ -189,8 +196,12 @@ impl VulkanRenderer {
 
     // TODO: probably have to customize this so we have a trait to genericize against
 
-    pub fn load_simple_shader(&self) -> Result<shaders::simple::vs::Shader> {
-        Ok(shaders::simple::vs::Shader::load(self.device.clone())?)
+    pub fn load_simple_shader(
+        &self,
+    ) -> Result<(shaders::simple::vs::Shader, shaders::simple::fs::Shader)> {
+        let vs = shaders::simple::vs::Shader::load(self.device.clone())?;
+        let fs = shaders::simple::fs::Shader::load(self.device.clone())?;
+        Ok((vs, fs))
     }
 
     //#endregion
@@ -208,13 +219,53 @@ impl VulkanRenderer {
 
     //#endregion
 
-    /*pub fn create_simple_render_pass(&self) {
-        Ok(Arc::new(vulkano::single_pass_renderpass!(
+    // TODO: make this more configurable
+    pub fn create_render_pass(&self) -> Result<Arc<RenderPass<impl RenderPassDesc>>> {
+        let render_pass = vulkano::single_pass_renderpass!(
             self.device.clone(),
-            attachments,
-            pass
-        )?))
-    }*/
+            attachments: {
+                color: {
+                    load: Clear,
+                    store: Store,
+                    format: self.swapchain.format(),
+                    samples: 1,
+                }
+            },
+            pass: {
+                color: [color],
+                depth_stencil: {}
+            }
+        )?;
+
+        Ok(Arc::new(render_pass))
+    }
+
+    // TODO: make this more configurable
+    pub fn create_pipeline(
+        &self,
+        render_pass: Arc<RenderPass<impl RenderPassDesc>>,
+        vs: shaders::simple::vs::Shader,
+        fs: shaders::simple::fs::Shader,
+    ) -> Result<
+        Arc<
+            GraphicsPipeline<
+                SingleBufferDefinition<Vertex>,
+                Box<dyn PipelineLayoutAbstract + Send + Sync>,
+                Arc<RenderPass<impl RenderPassDesc>>,
+            >,
+        >,
+    > {
+        let pipeline = GraphicsPipeline::start()
+            .vertex_input_single_buffer()
+            .vertex_shader(vs.main_entry_point(), ())
+            .triangle_list()
+            .viewports_dynamic_scissors_irrelevant(1)
+            .fragment_shader(fs.main_entry_point(), ())
+            .render_pass(Subpass::from(render_pass, 0).unwrap())
+            .build(self.device.clone())?;
+
+        Ok(Arc::new(pipeline))
+    }
 }
 
 impl Renderer for VulkanRenderer {}
