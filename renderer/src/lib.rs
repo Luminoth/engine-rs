@@ -7,7 +7,13 @@ pub use vulkan::*;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-pub trait Renderer {}
+pub trait RenderPass {}
+
+pub trait Pipeline {}
+
+pub trait Renderer {
+    fn begin_frame(&mut self);
+}
 
 #[derive(Default, Copy, Clone)]
 pub struct Vertex {

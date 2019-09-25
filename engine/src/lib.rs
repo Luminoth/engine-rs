@@ -13,12 +13,15 @@ pub use quaternion::*;
 pub use transform::*;
 pub use vector::*;
 
+use renderer::Renderer;
+
 pub type Result<T> = std::result::Result<T, Error>;
 
 pub struct Engine {
     events_loop: EventsLoop,
 
     renderer: Arc<RwLock<renderer::VulkanRenderer>>,
+    pipeline: Arc<renderer::VulkanPipeline>,
 }
 
 impl Engine {
@@ -43,12 +46,33 @@ impl Engine {
         &self.renderer
     }
 
-    pub fn run(&mut self) {
+    pub fn create_pipeline(&mut self) {
+        self.pipeline = self
+            .renderer
+            .read()
+            .create_simple_pipeline(render_pass.clone(), vs, fs)
+            .unwrap_or_else(|e| panic!("Error creating pipeline: {}", e));
+    }
+
+    pub fn run(&mut self) -> Result<()> {
         println!("Running...");
 
+        let mut quit = false;
+        let mut recreate_swapchain = false;
         loop {
-            let mut quit = false;
-            let mut recreate_swapchain = false;
+            {
+                let mut renderer = self.renderer.write();
+                renderer.begin_frame();
+
+                if recreate_swapchain {
+                    recreate_swapchain = false;
+                }
+
+                if !renderer.acquire_swapchain()? {
+                    recreate_swapchain = true;
+                    continue;
+                }
+            }
 
             self.events_loop.poll_events(|event| match event {
                 winit::Event::WindowEvent {
@@ -66,5 +90,7 @@ impl Engine {
                 break;
             }
         }
+
+        Ok(())
     }
 }

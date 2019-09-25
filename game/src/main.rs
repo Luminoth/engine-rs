@@ -21,18 +21,14 @@ fn main() -> Result<(), Error> {
         .create_simple_render_pass()
         .unwrap_or_else(|e| panic!("Error creating render pass: {}", e));
 
-    let pipeline = engine
-        .get_renderer()
-        .read()
-        .create_simple_pipeline(render_pass.clone(), vs, fs)
-        .unwrap_or_else(|e| panic!("Error creating pipeline: {}", e));
-
     engine
         .get_renderer()
         .write()
         .create_frame_buffers(render_pass.clone());
 
-    engine.run();
+    engine
+        .run()
+        .unwrap_or_else(|e| panic!("Error running game: {}", e));
 
     println!("Done!");
 
