@@ -1,7 +1,5 @@
-pub mod actor;
-mod quaternion;
-mod transform;
-mod vector;
+mod actor;
+pub mod components;
 
 use std::sync::Arc;
 
@@ -9,10 +7,7 @@ use failure::Error;
 use parking_lot::RwLock;
 use winit::EventsLoop;
 
-pub use quaternion::*;
-pub use transform::*;
-pub use vector::*;
-
+pub use actor::*;
 use renderer::Renderer;
 
 pub type Result<T> = std::result::Result<T, Error>;

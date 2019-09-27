@@ -15,13 +15,13 @@ pub trait Renderer {
     fn begin_frame(&mut self);
 }
 
-#[derive(Default, Copy, Clone)]
+#[derive(Default, Debug, Copy, Clone, PartialEq)]
 pub struct Vertex {
     pub position: [f32; 3],
 }
 vulkano::impl_vertex!(Vertex, position);
 
-#[derive(Default, Copy, Clone)]
+#[derive(Default, Debug, Copy, Clone, PartialEq)]
 pub struct Triangle {
     pub vertices: [Vertex; 3],
 }
