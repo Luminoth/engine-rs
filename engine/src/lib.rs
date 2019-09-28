@@ -4,6 +4,7 @@ mod scene;
 
 use chrono::prelude::*;
 use failure::Error;
+use imgui_winit_support::{HiDpiMode, WinitPlatform};
 use winit::EventsLoop;
 
 pub use actor::*;
@@ -42,9 +43,37 @@ impl Default for EngineStats {
     }
 }
 
-#[derive(Default)]
 struct EngineDebug {
+    imgui: imgui::Context,
+    imgui_platform: WinitPlatform,
     enable_debug_window: bool,
+}
+
+impl Default for EngineDebug {
+    fn default() -> Self {
+        let mut imgui = imgui::Context::create();
+        imgui.set_ini_filename(None);
+
+        let imgui_platform = WinitPlatform::init(&mut imgui);
+
+        let hidpi_factor = imgui_platform.hidpi_factor();
+        let font_size = (13.0 * hidpi_factor) as f32;
+        imgui
+            .fonts()
+            .add_font(&[imgui::FontSource::DefaultFontData {
+                config: Some(imgui::FontConfig {
+                    size_pixels: font_size,
+                    ..imgui::FontConfig::default()
+                }),
+            }]);
+        imgui.io_mut().font_global_scale = (1.0 / hidpi_factor) as f32;
+
+        Self {
+            imgui,
+            imgui_platform,
+            enable_debug_window: false,
+        }
+    }
 }
 
 pub struct Engine {
@@ -75,9 +104,9 @@ impl Engine {
                 renderer::Renderer::Vulkan(renderer::VulkanRendererState::new(&events_loop)?)
             }
         };
-        renderer.set_window_title(&appid.into());
+        renderer.get_window()?.set_title(&appid.into());
 
-        Ok(Self {
+        let mut engine = Self {
             events_loop,
             renderer,
             render_pass: renderer::RenderPass::None,
@@ -88,7 +117,15 @@ impl Engine {
 
             stats: EngineStats::default(),
             debug: EngineDebug::default(),
-        })
+        };
+
+        engine.debug.imgui_platform.attach_window(
+            engine.debug.imgui.io_mut(),
+            engine.renderer.get_window()?,
+            HiDpiMode::Default,
+        );
+
+        Ok(engine)
     }
 
     pub fn load_scene(&mut self) -> Result<()> {
@@ -134,10 +171,41 @@ impl Engine {
 
         let mut quit = false;
         let mut recreate_swapchain = false;
+        let mut _last_frame = std::time::Instant::now();
+
         loop {
             let frame_start = Utc::now();
 
             self.renderer.begin_frame();
+
+            self.events_loop.poll_events(|event| {
+                /*self.renderer
+                .get_window()
+                .and_then(|window| {
+                    self.debug.imgui_platform.handle_event(
+                        self.debug.imgui.io_mut(),
+                        self.renderer.get_window()?,
+                        &event,
+                    );
+
+                    Ok(())
+                })
+                .unwrap_or_else(|e| {
+                    eprintln!("No window");
+                });*/
+
+                match event {
+                    winit::Event::WindowEvent {
+                        event: winit::WindowEvent::CloseRequested,
+                        ..
+                    } => quit = true,
+                    winit::Event::WindowEvent {
+                        event: winit::WindowEvent::Resized(_),
+                        ..
+                    } => recreate_swapchain = true,
+                    _ => (),
+                }
+            });
 
             if recreate_swapchain {
                 if !self.renderer.recreate_swapchain()? {
@@ -149,6 +217,14 @@ impl Engine {
                 recreate_swapchain = false;
             }
 
+            /*self.debug
+                .imgui_platform
+                .prepare_frame(self.debug.imgui.io_mut(), self.renderer.get_window()?)
+                .unwrap_or_else(|e| eprintln!("{}", e));
+            last_frame = self.debug.imgui.io_mut().update_delta_time(last_frame);
+
+            let ui = self.debug.imgui.frame();*/
+
             if !self.renderer.draw_data(
                 &self.render_pipeline,
                 [0.0, 0.0, 1.0, 1.0],
@@ -158,17 +234,11 @@ impl Engine {
                 recreate_swapchain = true;
             }
 
-            self.events_loop.poll_events(|event| match event {
-                winit::Event::WindowEvent {
-                    event: winit::WindowEvent::CloseRequested,
-                    ..
-                } => quit = true,
-                winit::Event::WindowEvent {
-                    event: winit::WindowEvent::Resized(_),
-                    ..
-                } => recreate_swapchain = true,
-                _ => (),
-            });
+            /*self.debug
+                .imgui_platform
+                .prepare_render(&ui, self.renderer.get_window()?);
+            // TODO: render debug data
+            let _draw_data = ui.render();*/
 
             self.stats.frame_count += 1;
 

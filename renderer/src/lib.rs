@@ -9,6 +9,7 @@ use failure::{bail, Error};
 use vulkano::buffer::CpuAccessibleBuffer;
 use vulkano::framebuffer::{FramebufferAbstract, RenderPassAbstract};
 use vulkano::pipeline::GraphicsPipelineAbstract;
+use winit::Window;
 
 pub use vulkan::VulkanRendererState;
 
@@ -98,14 +99,11 @@ pub enum Renderer {
 impl Renderer {
     //#region Window Utils
 
-    pub fn set_window_title<S>(&self, window_title: S)
-    where
-        S: Into<String>,
-    {
-        match self {
-            Renderer::Vulkan(r) => r.get_window().set_title(&window_title.into()),
-            Renderer::None => (),
-        }
+    pub fn get_window(&self) -> Result<&Window> {
+        Ok(match self {
+            Renderer::Vulkan(r) => r.get_window(),
+            Renderer::None => bail!("No window"),
+        })
     }
 
     //#endregion

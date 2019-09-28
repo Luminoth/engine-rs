@@ -10,6 +10,8 @@ edition = "2018"
 
 chrono = "0.4"
 failure = "0.1"
+imgui = "0.2"
+imgui-winit-support = "0.2"
 parking_lot = "0.9"
 winit = "0.19"
 
