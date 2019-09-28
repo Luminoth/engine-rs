@@ -388,6 +388,7 @@ impl VulkanRenderer {
         Ok(Some(acquire_future))
     }
 
+    // TODO: this should just take the command buffers to execute
     pub fn draw_data(
         &mut self,
         render_pipeline: &VulkanRenderPipeline,

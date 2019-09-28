@@ -3,6 +3,7 @@ pub mod components;
 
 use std::sync::Arc;
 
+use chrono::prelude::*;
 use failure::Error;
 use parking_lot::RwLock;
 use winit::EventsLoop;
@@ -14,6 +15,33 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 // https://github.com/vulkano-rs/vulkano-examples/blob/master/src/bin/triangle.rs
 
+struct EngineStats {
+    frame_count: u64,
+    start_time: DateTime<Utc>,
+    last_fps_dump: DateTime<Utc>,
+}
+
+impl EngineStats {
+    pub fn fps(&self) -> f32 {
+        let duration = (Utc::now() - self.start_time).num_seconds();
+        if duration == 0 {
+            0.0
+        } else {
+            self.frame_count as f32 / duration as f32
+        }
+    }
+}
+
+impl Default for EngineStats {
+    fn default() -> Self {
+        Self {
+            frame_count: 0,
+            start_time: Utc::now(),
+            last_fps_dump: Utc::now(),
+        }
+    }
+}
+
 pub struct Engine {
     events_loop: EventsLoop,
 
@@ -21,6 +49,8 @@ pub struct Engine {
     render_pass: Option<renderer::VulkanRenderPass>,
     frame_buffers: Option<Vec<renderer::VulkanFrameBuffer>>,
     render_pipeline: Option<renderer::VulkanRenderPipeline>,
+
+    stats: EngineStats,
 }
 
 impl Engine {
@@ -41,6 +71,7 @@ impl Engine {
             render_pass: None,
             frame_buffers: None,
             render_pipeline: None,
+            stats: EngineStats::default(),
         })
     }
 
@@ -85,6 +116,8 @@ impl Engine {
         let mut quit = false;
         let mut recreate_swapchain = false;
         loop {
+            let frame_start = Utc::now();
+
             {
                 let mut renderer = self.renderer.write();
                 renderer.begin_frame();
@@ -115,6 +148,26 @@ impl Engine {
                 } => recreate_swapchain = true,
                 _ => (),
             });
+
+            self.stats.frame_count += 1;
+
+            let now = Utc::now();
+            let frame_time = now - frame_start;
+
+            // TODO:  average FPS vs last frame time extrapolated
+            // also print the frame time
+            if (now - self.stats.last_fps_dump).num_seconds() >= 1 {
+                println!(
+                    "Render Stats:
+\tFrames: {}
+\tFrame Time: {}ms
+\tFPS: {}",
+                    self.stats.frame_count,
+                    frame_time.num_milliseconds(),
+                    self.stats.fps()
+                );
+                self.stats.last_fps_dump = now.clone();
+            }
 
             if quit {
                 break;
