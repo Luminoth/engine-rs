@@ -1,19 +1,19 @@
 mod actor;
 pub mod components;
 
-use std::sync::Arc;
-
 use chrono::prelude::*;
 use failure::Error;
-use parking_lot::RwLock;
 use winit::EventsLoop;
 
 pub use actor::*;
-use renderer::Renderer;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
 // https://github.com/vulkano-rs/vulkano-examples/blob/master/src/bin/triangle.rs
+
+pub enum RendererType {
+    Vulkan,
+}
 
 struct EngineStats {
     frame_count: u64,
@@ -42,19 +42,25 @@ impl Default for EngineStats {
     }
 }
 
+#[derive(Default)]
+struct EngineDebug {
+    enable_debug_window: bool,
+}
+
 pub struct Engine {
     events_loop: EventsLoop,
 
-    renderer: Arc<RwLock<renderer::VulkanRenderer>>,
-    render_pass: Option<renderer::VulkanRenderPass>,
-    frame_buffers: Option<Vec<renderer::VulkanFrameBuffer>>,
-    render_pipeline: Option<renderer::VulkanRenderPipeline>,
+    renderer: renderer::Renderer,
+    render_pass: renderer::RenderPass,
+    frame_buffers: Vec<renderer::FrameBuffer>,
+    render_pipeline: renderer::RenderPipeline,
 
     stats: EngineStats,
+    debug: EngineDebug,
 }
 
 impl Engine {
-    pub fn new<S>(appid: S) -> Result<Self>
+    pub fn new<S>(appid: S, renderer_type: RendererType) -> Result<Self>
     where
         S: Into<String>,
     {
@@ -62,16 +68,21 @@ impl Engine {
 
         let events_loop = EventsLoop::new();
 
-        let renderer = renderer::VulkanRenderer::new(&events_loop)?;
-        renderer.get_window().set_title(&appid.into());
+        let renderer = match renderer_type {
+            RendererType::Vulkan => {
+                renderer::Renderer::Vulkan(renderer::VulkanRendererState::new(&events_loop)?)
+            }
+        };
+        renderer.set_window_title(&appid.into());
 
         Ok(Self {
             events_loop,
-            renderer: Arc::new(RwLock::new(renderer)),
-            render_pass: None,
-            frame_buffers: None,
-            render_pipeline: None,
+            renderer,
+            render_pass: renderer::RenderPass::None,
+            frame_buffers: Vec::new(),
+            render_pipeline: renderer::RenderPipeline::None,
             stats: EngineStats::default(),
+            debug: EngineDebug::default(),
         })
     }
 
@@ -82,30 +93,23 @@ impl Engine {
 
         let (vs, fs) = self
             .renderer
-            .read()
             .load_simple_shader()
             .unwrap_or_else(|e| panic!("Error loading simple shader: {}", e));
 
-        self.render_pass = Some(
-            self.renderer
-                .read()
-                .create_simple_render_pass()
-                .unwrap_or_else(|e| panic!("Error creating render pass: {}", e)),
-        );
+        self.render_pass = self
+            .renderer
+            .create_simple_render_pass()
+            .unwrap_or_else(|e| panic!("Error creating render pass: {}", e));
 
-        self.render_pipeline = Some(
-            self.renderer
-                .read()
-                .create_simple_render_pipeline(self.render_pass.as_ref().unwrap(), vs, fs)
-                .unwrap_or_else(|e| panic!("Error creating render pipeline: {}", e)),
-        );
+        self.render_pipeline = self
+            .renderer
+            .create_simple_render_pipeline(&self.render_pass, vs, fs)
+            .unwrap_or_else(|e| panic!("Error creating render pipeline: {}", e));
 
-        self.frame_buffers = Some(
-            self.renderer
-                .write()
-                .create_frame_buffers(self.render_pass.as_ref().unwrap())
-                .unwrap_or_else(|e| panic!("Error creating frame buffers: {}", e)),
-        );
+        self.frame_buffers = self
+            .renderer
+            .create_frame_buffers(&self.render_pass)
+            .unwrap_or_else(|e| panic!("Error creating frame buffers: {}", e));
 
         Ok(())
     }
@@ -118,23 +122,20 @@ impl Engine {
         loop {
             let frame_start = Utc::now();
 
-            {
-                let mut renderer = self.renderer.write();
-                renderer.begin_frame();
+            self.renderer.begin_frame();
 
-                if recreate_swapchain {
-                    // TODO: recreate the swapchain
+            if recreate_swapchain {
+                // TODO: recreate the swapchain
 
-                    recreate_swapchain = false;
-                }
+                recreate_swapchain = false;
+            }
 
-                if !renderer.draw_data(
-                    self.render_pipeline.as_ref().unwrap(),
-                    vec![[0.0, 0.0, 1.0, 1.0].into()],
-                    self.frame_buffers.as_ref().unwrap(),
-                )? {
-                    recreate_swapchain = true;
-                }
+            if !self.renderer.draw_data(
+                &self.render_pipeline,
+                [0.0, 0.0, 1.0, 1.0],
+                &self.frame_buffers,
+            )? {
+                recreate_swapchain = true;
             }
 
             self.events_loop.poll_events(|event| match event {

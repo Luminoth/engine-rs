@@ -1,12 +1,12 @@
 use failure::Error;
 
-use engine::Engine;
+use engine::{Engine, RendererType};
 
 // http://vulkano.rs/guide/buffer-creation
 
 fn main() -> Result<(), Error> {
-    let mut engine =
-        Engine::new("engine-rs").unwrap_or_else(|e| panic!("Error initializing engine: {}", e));
+    let mut engine = Engine::new("engine-rs", RendererType::Vulkan)
+        .unwrap_or_else(|e| panic!("Error initializing engine: {}", e));
 
     // TODO: this is probably not even necessary
     engine

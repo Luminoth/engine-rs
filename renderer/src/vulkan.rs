@@ -1,17 +1,18 @@
 use std::sync::Arc;
 
+use derivative::Derivative;
 use failure::{bail, format_err, Error};
-use vulkano::buffer::{BufferAccess, BufferUsage, CpuAccessibleBuffer};
+use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::pool::standard::StandardCommandPoolBuilder;
-use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState};
+use vulkano::command_buffer::{AutoCommandBuffer, AutoCommandBufferBuilder, DynamicState};
 use vulkano::device::{Device, DeviceExtensions, Queue};
-use vulkano::format::{ClearValue, FormatDesc};
-use vulkano::framebuffer::{Framebuffer, FramebufferAbstract, RenderPassAbstract, Subpass};
+use vulkano::format::FormatDesc;
+use vulkano::framebuffer::{Framebuffer, FramebufferAbstract, Subpass};
 use vulkano::image::{Dimensions, StorageImage, SwapchainImage};
 use vulkano::instance::{Instance, PhysicalDevice};
 use vulkano::memory::Content;
 use vulkano::pipeline::viewport::Viewport;
-use vulkano::pipeline::{GraphicsPipeline, GraphicsPipelineAbstract};
+use vulkano::pipeline::GraphicsPipeline;
 use vulkano::swapchain::{
     AcquireError, PresentMode, Surface, SurfaceTransform, Swapchain, SwapchainAcquireFuture,
 };
@@ -23,55 +24,9 @@ use crate::*;
 
 type VertexBuffer = Arc<CpuAccessibleBuffer<[Vertex]>>;
 
-//#region Render Pass
-
-pub struct VulkanRenderPass {
-    render_pass: Arc<dyn RenderPassAbstract + Send + Sync>,
-}
-
-impl VulkanRenderPass {
-    pub fn new(render_pass: Arc<dyn RenderPassAbstract + Send + Sync>) -> Self {
-        Self { render_pass }
-    }
-}
-
-impl crate::RenderPass for VulkanRenderPass {}
-
-//#endregion
-
-//#region Frame Buffer
-
-pub struct VulkanFrameBuffer {
-    frame_buffer: Arc<dyn FramebufferAbstract + Send + Sync>,
-}
-
-impl VulkanFrameBuffer {
-    pub fn new(frame_buffer: Arc<dyn FramebufferAbstract + Send + Sync>) -> Self {
-        Self { frame_buffer }
-    }
-}
-
-impl crate::FrameBuffer for VulkanFrameBuffer {}
-
-//#endregion
-
-//#region Render Pipeline
-
-pub struct VulkanRenderPipeline {
-    pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
-}
-
-impl VulkanRenderPipeline {
-    fn new(pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>) -> Self {
-        Self { pipeline }
-    }
-}
-
-impl crate::RenderPipeline for VulkanRenderPipeline {}
-
-//#endregion
-
-pub struct VulkanRenderer {
+#[derive(Derivative)]
+#[derivative(Debug)]
+pub struct VulkanRendererState {
     instance: Arc<Instance>,
 
     device: Arc<Device>,
@@ -80,22 +35,27 @@ pub struct VulkanRenderer {
 
     surface: Arc<Surface<Window>>,
 
+    #[derivative(Debug = "ignore")]
     swapchain: Arc<Swapchain<Window>>,
+
+    #[derivative(Debug = "ignore")]
     swapchain_images: Vec<Arc<SwapchainImage<Window>>>,
+
     current_swapchain_image: usize,
 
     dynamic_state: DynamicState,
 
+    #[derivative(Debug = "ignore")]
     frame_future: Option<Box<dyn GpuFuture>>,
 }
 
-impl VulkanRenderer {
+impl VulkanRendererState {
     pub fn new(events_loop: &EventsLoop) -> Result<Self> {
         let extensions = vulkano_win::required_extensions();
         // TODO: what about application-required extensions?
 
         println!(
-            "Initializing vulkan renderer...
+            "Initializing Vulkan renderer...
 \tExtensions: {:?}",
             extensions
         );
@@ -189,12 +149,27 @@ impl VulkanRenderer {
         })
     }
 
-    pub fn get_instance(&self) -> &Arc<Instance> {
-        &self.instance
+    pub(crate) fn get_device(&self) -> &Arc<Device> {
+        &self.device
     }
 
-    pub fn get_window(&self) -> &Window {
+    pub(crate) fn get_window(&self) -> &Window {
         self.surface.window()
+    }
+
+    pub(crate) fn init_viewport(&mut self) {
+        let dimensions = self.swapchain_images[0].dimensions();
+
+        let viewport = Viewport {
+            origin: [0.0, 0.0],
+            dimensions: [dimensions[0] as f32, dimensions[1] as f32],
+            depth_range: 0.0..1.0,
+        };
+        self.dynamic_state.viewports = Some(vec![viewport]);
+    }
+
+    pub(crate) fn get_current_swapchain_image(&self) -> usize {
+        self.current_swapchain_image
     }
 
     //#region CPU Buffers
@@ -263,32 +238,23 @@ impl VulkanRenderer {
         )?)
     }
 
-    //#endregion
-
-    //#region Shaders
-
-    // TODO: probably have to customize this so we have a trait to genericize against
-
-    pub fn load_simple_shader(
+    pub(crate) fn create_primary_one_time_submit_command_buffer(
         &self,
-    ) -> Result<(shaders::simple::vs::Shader, shaders::simple::fs::Shader)> {
-        println!("Loading simple shaders...");
-
-        let vs = shaders::simple::vs::Shader::load(self.device.clone())?;
-        let fs = shaders::simple::fs::Shader::load(self.device.clone())?;
-        Ok((vs, fs))
+    ) -> Result<AutoCommandBufferBuilder<StandardCommandPoolBuilder>> {
+        Ok(AutoCommandBufferBuilder::primary_one_time_submit(
+            self.device.clone(),
+            self.graphics_queue.family(),
+        )?)
     }
 
     //#endregion
 
     //#region Render Pass
 
-    pub fn create_simple_render_pass(&self) -> Result<VulkanRenderPass> {
-        println!("Creating simple render pass...");
-
-        Ok(VulkanRenderPass::new(Arc::new(
+    pub(crate) fn create_simple_render_pass(&self) -> Result<RenderPass> {
+        Ok(RenderPass::Vulkan(Arc::new(
             vulkano::single_pass_renderpass!(
-                self.device.clone(),
+               self.device.clone(),
                 attachments: {
                     color: {
                         load: Clear,
@@ -309,62 +275,55 @@ impl VulkanRenderer {
 
     //#region Frame Buffers
 
-    pub fn create_frame_buffers(
+    pub(crate) fn create_frame_buffers(
         &mut self,
-        render_pass: &VulkanRenderPass,
-    ) -> Result<Vec<VulkanFrameBuffer>> {
-        println!("Creating frame buffers...");
+        render_pass: &RenderPass,
+    ) -> Result<Vec<FrameBuffer>> {
+        Ok(match render_pass {
+            RenderPass::Vulkan(rp) => {
+                let mut frame_buffers = Vec::new();
+                for image in &self.swapchain_images {
+                    let frame_buffer = FrameBuffer::Vulkan(Arc::new(
+                        Framebuffer::start(rp.clone()).add(image.clone())?.build()?,
+                    )
+                        as Arc<dyn FramebufferAbstract + Send + Sync>);
+                    frame_buffers.push(frame_buffer);
+                }
 
-        let dimensions = self.swapchain_images[0].dimensions();
-
-        let viewport = Viewport {
-            origin: [0.0, 0.0],
-            dimensions: [dimensions[0] as f32, dimensions[1] as f32],
-            depth_range: 0.0..1.0,
-        };
-        self.dynamic_state.viewports = Some(vec![viewport]);
-
-        let mut frame_buffers = Vec::new();
-        for image in &self.swapchain_images {
-            let frame_buffer = VulkanFrameBuffer::new(Arc::new(
-                Framebuffer::start(render_pass.render_pass.clone())
-                    .add(image.clone())?
-                    .build()?,
-            )
-                as Arc<dyn FramebufferAbstract + Send + Sync>);
-            frame_buffers.push(frame_buffer);
-        }
-
-        Ok(frame_buffers)
+                frame_buffers
+            }
+            _ => bail!("Render pass type {} not supported!", render_pass),
+        })
     }
 
     //#endregion
 
     //#region Pipeline
 
-    pub fn create_simple_render_pipeline(
+    pub(crate) fn create_simple_render_pipeline(
         &self,
-        render_pass: &VulkanRenderPass,
+        render_pass: &RenderPass,
         vs: shaders::simple::vs::Shader,
         fs: shaders::simple::fs::Shader,
-    ) -> Result<VulkanRenderPipeline> {
-        println!("Creating simple pipeline...");
-
-        Ok(VulkanRenderPipeline::new(Arc::new(
-            GraphicsPipeline::start()
-                .vertex_input_single_buffer::<Vertex>()
-                .vertex_shader(vs.main_entry_point(), ())
-                .triangle_list()
-                .viewports_dynamic_scissors_irrelevant(1)
-                .fragment_shader(fs.main_entry_point(), ())
-                .render_pass(Subpass::from(render_pass.render_pass.clone(), 0).unwrap())
-                .build(self.device.clone())?,
-        )))
+    ) -> Result<RenderPipeline> {
+        Ok(match render_pass {
+            RenderPass::Vulkan(rp) => RenderPipeline::Vulkan(Arc::new(
+                GraphicsPipeline::start()
+                    .vertex_input_single_buffer::<Vertex>()
+                    .vertex_shader(vs.main_entry_point(), ())
+                    .triangle_list()
+                    .viewports_dynamic_scissors_irrelevant(1)
+                    .fragment_shader(fs.main_entry_point(), ())
+                    .render_pass(Subpass::from(rp.clone(), 0).unwrap())
+                    .build(self.device.clone())?,
+            )),
+            _ => bail!("Render pass type {} not supported!", render_pass),
+        })
     }
 
     //#endregion
 
-    pub fn begin_frame(&mut self) {
+    pub(crate) fn begin_frame(&mut self) {
         match &mut self.frame_future {
             Some(ref mut frame_future) => frame_future.cleanup_finished(),
             None => {
@@ -374,7 +333,7 @@ impl VulkanRenderer {
         }
     }
 
-    fn acquire_swapchain(&mut self) -> Result<Option<SwapchainAcquireFuture<Window>>> {
+    pub(crate) fn acquire_swapchain(&mut self) -> Result<Option<SwapchainAcquireFuture<Window>>> {
         let (swapchain_image, acquire_future) =
             match vulkano::swapchain::acquire_next_image(self.swapchain.clone(), None) {
                 Ok(result) => result,
@@ -388,41 +347,11 @@ impl VulkanRenderer {
         Ok(Some(acquire_future))
     }
 
-    // TODO: this should just take the command buffers to execute
-    pub fn draw_data(
+    pub(crate) fn submit(
         &mut self,
-        render_pipeline: &VulkanRenderPipeline,
-        clear_values: Vec<ClearValue>,
-        //draw_data: Vec<Arc<dyn BufferAccess + Send + Sync>>,
-        framebuffers: &Vec<VulkanFrameBuffer>,
+        acquire_future: SwapchainAcquireFuture<Window>,
+        command_buffer: AutoCommandBuffer,
     ) -> Result<bool> {
-        let acquire_future = self.acquire_swapchain()?;
-        if acquire_future.is_none() {
-            return Ok(false);
-        }
-        let acquire_future = acquire_future.unwrap();
-
-        let command_buffer = AutoCommandBufferBuilder::primary_one_time_submit(
-            self.device.clone(),
-            self.graphics_queue.family(),
-        )?
-        .begin_render_pass(
-            framebuffers[self.current_swapchain_image]
-                .frame_buffer
-                .clone(),
-            false,
-            clear_values,
-        )?
-        /*.draw(
-            render_pipeline.pipeline.clone(),
-            &self.dynamic_state,
-            draw_data,
-            (),
-            (),
-        )?*/
-        .end_render_pass()?
-        .build()?;
-
         let future = self
             .frame_future
             .take()
@@ -456,5 +385,3 @@ impl VulkanRenderer {
         Ok(!recreate_swapchain)
     }
 }
-
-impl Renderer for VulkanRenderer {}
