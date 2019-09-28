@@ -12,11 +12,15 @@ use renderer::Renderer;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+// https://github.com/vulkano-rs/vulkano-examples/blob/master/src/bin/triangle.rs
+
 pub struct Engine {
     events_loop: EventsLoop,
 
     renderer: Arc<RwLock<renderer::VulkanRenderer>>,
-    pipeline: Arc<renderer::VulkanPipeline>,
+    render_pass: Option<renderer::VulkanRenderPass>,
+    frame_buffers: Option<Vec<renderer::VulkanFrameBuffer>>,
+    render_pipeline: Option<renderer::VulkanRenderPipeline>,
 }
 
 impl Engine {
@@ -34,19 +38,45 @@ impl Engine {
         Ok(Self {
             events_loop,
             renderer: Arc::new(RwLock::new(renderer)),
+            render_pass: None,
+            frame_buffers: None,
+            render_pipeline: None,
         })
     }
 
-    pub fn get_renderer(&self) -> &Arc<RwLock<renderer::VulkanRenderer>> {
-        &self.renderer
-    }
+    pub fn load_scene(&mut self) -> Result<()> {
+        println!("Loading scene...");
 
-    pub fn create_pipeline(&mut self) {
-        self.pipeline = self
+        // TODO: setup the vertex buffer
+
+        let (vs, fs) = self
             .renderer
             .read()
-            .create_simple_pipeline(render_pass.clone(), vs, fs)
-            .unwrap_or_else(|e| panic!("Error creating pipeline: {}", e));
+            .load_simple_shader()
+            .unwrap_or_else(|e| panic!("Error loading simple shader: {}", e));
+
+        self.render_pass = Some(
+            self.renderer
+                .read()
+                .create_simple_render_pass()
+                .unwrap_or_else(|e| panic!("Error creating render pass: {}", e)),
+        );
+
+        self.render_pipeline = Some(
+            self.renderer
+                .read()
+                .create_simple_render_pipeline(self.render_pass.as_ref().unwrap(), vs, fs)
+                .unwrap_or_else(|e| panic!("Error creating render pipeline: {}", e)),
+        );
+
+        self.frame_buffers = Some(
+            self.renderer
+                .write()
+                .create_frame_buffers(self.render_pass.as_ref().unwrap())
+                .unwrap_or_else(|e| panic!("Error creating frame buffers: {}", e)),
+        );
+
+        Ok(())
     }
 
     pub fn run(&mut self) -> Result<()> {
@@ -54,18 +84,24 @@ impl Engine {
 
         let mut quit = false;
         let mut recreate_swapchain = false;
+        let clear_values = vec![[0.0, 0.0, 1.0, 1.0].into()];
         loop {
             {
                 let mut renderer = self.renderer.write();
                 renderer.begin_frame();
 
                 if recreate_swapchain {
+                    // TODO: recreate the swapchain
+
                     recreate_swapchain = false;
                 }
 
-                if !renderer.acquire_swapchain()? {
+                if !renderer.draw_data(
+                    self.render_pipeline.as_ref().unwrap(),
+                    &clear_values,
+                    self.frame_buffers.as_ref().unwrap(),
+                )? {
                     recreate_swapchain = true;
-                    continue;
                 }
             }
 

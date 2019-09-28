@@ -23,6 +23,8 @@ use crate::*;
 
 type VertexBuffer = Arc<CpuAccessibleBuffer<[Vertex]>>;
 
+//#region Render Pass
+
 pub struct VulkanRenderPass {
     render_pass: Arc<dyn RenderPassAbstract + Send + Sync>,
 }
@@ -35,17 +37,39 @@ impl VulkanRenderPass {
 
 impl crate::RenderPass for VulkanRenderPass {}
 
-pub struct VulkanPipeline {
+//#endregion
+
+//#region Frame Buffer
+
+pub struct VulkanFrameBuffer {
+    frame_buffer: Arc<dyn FramebufferAbstract + Send + Sync>,
+}
+
+impl VulkanFrameBuffer {
+    pub fn new(frame_buffer: Arc<dyn FramebufferAbstract + Send + Sync>) -> Self {
+        Self { frame_buffer }
+    }
+}
+
+impl crate::FrameBuffer for VulkanFrameBuffer {}
+
+//#endregion
+
+//#region Render Pipeline
+
+pub struct VulkanRenderPipeline {
     pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
 }
 
-impl VulkanPipeline {
+impl VulkanRenderPipeline {
     fn new(pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>) -> Self {
         Self { pipeline }
     }
 }
 
-impl crate::Pipeline for VulkanPipeline {}
+impl crate::RenderPipeline for VulkanRenderPipeline {}
+
+//#endregion
 
 pub struct VulkanRenderer {
     instance: Arc<Instance>,
@@ -60,11 +84,9 @@ pub struct VulkanRenderer {
     swapchain_images: Vec<Arc<SwapchainImage<Window>>>,
     current_swapchain_image: usize,
 
-    framebuffers: Vec<Arc<dyn FramebufferAbstract + Send + Sync>>,
-
     dynamic_state: DynamicState,
 
-    frame_end: Box<dyn GpuFuture>,
+    frame_future: Option<Box<dyn GpuFuture>>,
 }
 
 impl VulkanRenderer {
@@ -154,8 +176,6 @@ impl VulkanRenderer {
             None,
         )?;
 
-        let frame_end = Box::new(vulkano::sync::now(device.clone()));
-
         Ok(Self {
             instance,
             device,
@@ -164,9 +184,8 @@ impl VulkanRenderer {
             swapchain,
             swapchain_images,
             current_swapchain_image: 0,
-            framebuffers: Vec::new(),
             dynamic_state: DynamicState::none(),
-            frame_end,
+            frame_future: None,
         })
     }
 
@@ -233,20 +252,6 @@ impl VulkanRenderer {
 
     //#endregion
 
-    //#region Shaders
-
-    // TODO: probably have to customize this so we have a trait to genericize against
-
-    pub fn load_simple_shader(
-        &self,
-    ) -> Result<(shaders::simple::vs::Shader, shaders::simple::fs::Shader)> {
-        let vs = shaders::simple::vs::Shader::load(self.device.clone())?;
-        let fs = shaders::simple::fs::Shader::load(self.device.clone())?;
-        Ok((vs, fs))
-    }
-
-    //#endregion
-
     //#region Command Buffers
 
     pub fn create_command_buffer(
@@ -260,34 +265,23 @@ impl VulkanRenderer {
 
     //#endregion
 
-    //#region Frame Buffers
+    //#region Shaders
 
-    pub fn create_frame_buffers(&mut self, render_pass: Arc<dyn RenderPassAbstract + Send + Sync>) {
-        let dimensions = self.swapchain_images[0].dimensions();
+    // TODO: probably have to customize this so we have a trait to genericize against
 
-        let viewport = Viewport {
-            origin: [0.0, 0.0],
-            dimensions: [dimensions[0] as f32, dimensions[1] as f32],
-            depth_range: 0.0..1.0,
-        };
-        self.dynamic_state.viewports = Some(vec![viewport]);
+    pub fn load_simple_shader(
+        &self,
+    ) -> Result<(shaders::simple::vs::Shader, shaders::simple::fs::Shader)> {
+        println!("Loading simple shaders...");
 
-        self.framebuffers = self
-            .swapchain_images
-            .iter()
-            .map(|image| {
-                Arc::new(
-                    Framebuffer::start(render_pass.clone())
-                        .add(image.clone())
-                        .unwrap()
-                        .build()
-                        .unwrap(),
-                ) as Arc<dyn FramebufferAbstract + Send + Sync>
-            })
-            .collect::<Vec<_>>();
+        let vs = shaders::simple::vs::Shader::load(self.device.clone())?;
+        let fs = shaders::simple::fs::Shader::load(self.device.clone())?;
+        Ok((vs, fs))
     }
 
     //#endregion
+
+    //#region Render Pass
 
     pub fn create_simple_render_pass(&self) -> Result<VulkanRenderPass> {
         println!("Creating simple render pass...");
@@ -311,24 +305,73 @@ impl VulkanRenderer {
         )))
     }
 
-    pub fn create_simple_pipeline(
+    //#endregion
+
+    //#region Frame Buffers
+
+    pub fn create_frame_buffers(
+        &mut self,
+        render_pass: &VulkanRenderPass,
+    ) -> Result<Vec<VulkanFrameBuffer>> {
+        println!("Creating frame buffers...");
+
+        let dimensions = self.swapchain_images[0].dimensions();
+
+        let viewport = Viewport {
+            origin: [0.0, 0.0],
+            dimensions: [dimensions[0] as f32, dimensions[1] as f32],
+            depth_range: 0.0..1.0,
+        };
+        self.dynamic_state.viewports = Some(vec![viewport]);
+
+        let mut frame_buffers = Vec::new();
+        for image in &self.swapchain_images {
+            let frame_buffer = VulkanFrameBuffer::new(Arc::new(
+                Framebuffer::start(render_pass.render_pass.clone())
+                    .add(image.clone())?
+                    .build()?,
+            )
+                as Arc<dyn FramebufferAbstract + Send + Sync>);
+            frame_buffers.push(frame_buffer);
+        }
+
+        Ok(frame_buffers)
+    }
+
+    //#endregion
+
+    //#region Pipeline
+
+    pub fn create_simple_render_pipeline(
         &self,
-        render_pass: Arc<dyn RenderPassAbstract + Send + Sync>,
+        render_pass: &VulkanRenderPass,
         vs: shaders::simple::vs::Shader,
         fs: shaders::simple::fs::Shader,
-    ) -> Result<VulkanPipeline> {
+    ) -> Result<VulkanRenderPipeline> {
         println!("Creating simple pipeline...");
 
-        Ok(VulkanPipeline::new(Arc::new(
+        Ok(VulkanRenderPipeline::new(Arc::new(
             GraphicsPipeline::start()
                 .vertex_input_single_buffer::<Vertex>()
                 .vertex_shader(vs.main_entry_point(), ())
                 .triangle_list()
                 .viewports_dynamic_scissors_irrelevant(1)
                 .fragment_shader(fs.main_entry_point(), ())
-                .render_pass(Subpass::from(render_pass, 0).unwrap())
+                .render_pass(Subpass::from(render_pass.render_pass.clone(), 0).unwrap())
                 .build(self.device.clone())?,
         )))
+    }
+
+    //#endregion
+
+    pub fn begin_frame(&mut self) {
+        match &mut self.frame_future {
+            Some(ref mut frame_future) => frame_future.cleanup_finished(),
+            None => {
+                self.frame_future =
+                    Some(Box::new(vulkano::sync::now(self.device.clone())) as Box<dyn GpuFuture>)
+            }
+        }
     }
 
     fn acquire_swapchain(&mut self) -> Result<Option<SwapchainAcquireFuture<Window>>> {
@@ -345,11 +388,12 @@ impl VulkanRenderer {
         Ok(Some(acquire_future))
     }
 
-    pub fn draw_data<B>(
+    pub fn draw_data(
         &mut self,
-        pipeline: &VulkanPipeline,
-        clear_values: Vec<f32>,
-        draw_data: Vec<Arc<dyn BufferAccess + Send + Sync>>,
+        render_pipeline: &VulkanRenderPipeline,
+        clear_values: &Vec<ClearValue>,
+        //draw_data: Vec<Arc<dyn BufferAccess + Send + Sync>>,
+        framebuffers: &Vec<VulkanFrameBuffer>,
     ) -> Result<bool> {
         let acquire_future = self.acquire_swapchain()?;
         if acquire_future.is_none() {
@@ -357,32 +401,31 @@ impl VulkanRenderer {
         }
         let acquire_future = acquire_future.unwrap();
 
-        let mut cv = Vec::new();
-        for v in clear_values {
-            cv.push(ClearValue::from(v));
-        }
-
         let command_buffer = AutoCommandBufferBuilder::primary_one_time_submit(
             self.device.clone(),
             self.graphics_queue.family(),
         )?
         .begin_render_pass(
-            self.framebuffers[self.current_swapchain_image].clone(),
+            framebuffers[self.current_swapchain_image]
+                .frame_buffer
+                .clone(),
             false,
-            cv,
+            clear_values.to_vec(),
         )?
-        .draw(
-            pipeline.pipeline.clone(),
+        /*.draw(
+            render_pipeline.pipeline.clone(),
             &self.dynamic_state,
             draw_data,
             (),
             (),
-        )?
+        )?*/
         .end_render_pass()?
         .build()?;
 
-        /*let future = self
-            .frame_end
+        let future = self
+            .frame_future
+            .take()
+            .unwrap()
             .join(acquire_future)
             .then_execute(self.graphics_queue.clone(), command_buffer)?
             .then_swapchain_present(
@@ -390,29 +433,27 @@ impl VulkanRenderer {
                 self.swapchain.clone(),
                 self.current_swapchain_image,
             )
-            .then_signal_fence_and_flush();*/
+            .then_signal_fence_and_flush();
 
         let mut recreate_swapchain = false;
-        /*match future {
+        match future {
             Ok(future) => {
-                self.frame_end = Box::new(future) as Box<_>;
+                self.frame_future = Some(Box::new(future) as Box<_>);
             }
             Err(FlushError::OutOfDate) => {
                 recreate_swapchain = true;
-                self.frame_end = Box::new(vulkano::sync::now(self.device.clone())) as Box<_>;
+                self.frame_future =
+                    Some(Box::new(vulkano::sync::now(self.device.clone())) as Box<_>);
             }
             Err(e) => {
                 println!("{:?}", e);
-                self.frame_end = Box::new(vulkano::sync::now(self.device.clone())) as Box<_>;
+                self.frame_future =
+                    Some(Box::new(vulkano::sync::now(self.device.clone())) as Box<_>);
             }
-        }*/
+        }
 
         Ok(!recreate_swapchain)
     }
 }
 
-impl Renderer for VulkanRenderer {
-    fn begin_frame(&mut self) {
-        self.frame_end.cleanup_finished();
-    }
-}
+impl Renderer for VulkanRenderer {}

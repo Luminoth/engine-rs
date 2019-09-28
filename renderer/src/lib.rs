@@ -9,11 +9,11 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 pub trait RenderPass {}
 
-pub trait Pipeline {}
+pub trait FrameBuffer {}
 
-pub trait Renderer {
-    fn begin_frame(&mut self);
-}
+pub trait RenderPipeline {}
+
+pub trait Renderer {}
 
 #[derive(Default, Debug, Copy, Clone, PartialEq)]
 pub struct Vertex {
