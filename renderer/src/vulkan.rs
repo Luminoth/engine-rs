@@ -391,7 +391,7 @@ impl VulkanRenderer {
     pub fn draw_data(
         &mut self,
         render_pipeline: &VulkanRenderPipeline,
-        clear_values: &Vec<ClearValue>,
+        clear_values: Vec<ClearValue>,
         //draw_data: Vec<Arc<dyn BufferAccess + Send + Sync>>,
         framebuffers: &Vec<VulkanFrameBuffer>,
     ) -> Result<bool> {
@@ -410,7 +410,7 @@ impl VulkanRenderer {
                 .frame_buffer
                 .clone(),
             false,
-            clear_values.to_vec(),
+            clear_values,
         )?
         /*.draw(
             render_pipeline.pipeline.clone(),

@@ -84,7 +84,6 @@ impl Engine {
 
         let mut quit = false;
         let mut recreate_swapchain = false;
-        let clear_values = vec![[0.0, 0.0, 1.0, 1.0].into()];
         loop {
             {
                 let mut renderer = self.renderer.write();
@@ -98,7 +97,7 @@ impl Engine {
 
                 if !renderer.draw_data(
                     self.render_pipeline.as_ref().unwrap(),
-                    &clear_values,
+                    vec![[0.0, 0.0, 1.0, 1.0].into()],
                     self.frame_buffers.as_ref().unwrap(),
                 )? {
                     recreate_swapchain = true;
