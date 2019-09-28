@@ -6,12 +6,31 @@ use std::sync::Arc;
 
 use derivative::Derivative;
 use failure::{bail, Error};
+use vulkano::buffer::CpuAccessibleBuffer;
 use vulkano::framebuffer::{FramebufferAbstract, RenderPassAbstract};
 use vulkano::pipeline::GraphicsPipelineAbstract;
 
 pub use vulkan::VulkanRendererState;
 
 pub type Result<T> = std::result::Result<T, Error>;
+
+#[derive(Derivative)]
+#[derivative(Default)]
+pub enum VertexBuffer {
+    Vulkan(Arc<CpuAccessibleBuffer<[Vertex]>>),
+
+    #[derivative(Default)]
+    None,
+}
+
+impl fmt::Display for VertexBuffer {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            VertexBuffer::Vulkan(_) => write!(f, "Vulkan"),
+            VertexBuffer::None => write!(f, "None"),
+        }
+    }
+}
 
 #[derive(Derivative)]
 #[derivative(Default)]
@@ -98,6 +117,27 @@ impl Renderer {
         }
     }
 
+    pub fn recreate_swapchain(&mut self) -> Result<bool> {
+        Ok(match self {
+            Renderer::Vulkan(r) => r.recreate_swapchain()?,
+            Renderer::None => true,
+        })
+    }
+
+    //#region CPU Buffers
+
+    pub fn create_vertex_buffer<V>(&self, vertices: V) -> Result<VertexBuffer>
+    where
+        V: Into<Vec<Vertex>>,
+    {
+        Ok(match self {
+            Renderer::Vulkan(r) => VertexBuffer::Vulkan(r.create_cpu_buffer_iter(vertices)?),
+            Renderer::None => VertexBuffer::None,
+        })
+    }
+
+    //#endregion
+
     //#region Shaders
 
     // TODO: probably have to customize this so we have a trait to genericize against
@@ -174,52 +214,19 @@ impl Renderer {
     // TODO: this should just take the command buffers to execute
     pub fn draw_data<F>(
         &mut self,
-        _render_pipeline: &RenderPipeline,
+        render_pipeline: &RenderPipeline,
         clear_values: [f32; 4],
-        //draw_data: Vec<Arc<dyn BufferAccess + Send + Sync>>,
+        draw_data: &VertexBuffer,
         frame_buffers: F,
     ) -> Result<bool>
     where
         F: AsRef<Vec<FrameBuffer>>,
     {
-        let frame_buffers = frame_buffers.as_ref();
-
         Ok(match self {
             Renderer::Vulkan(r) => {
-                let clear_values = vec![clear_values.into()];
-
-                let acquire_future = r.acquire_swapchain()?;
-                if acquire_future.is_none() {
-                    return Ok(false);
-                }
-                let acquire_future = acquire_future.unwrap();
-
-                let frame_buffer = &frame_buffers[r.get_current_swapchain_image()];
-
-                let command_buffer = r
-                    .create_primary_one_time_submit_command_buffer()?
-                    .begin_render_pass(
-                        match frame_buffer {
-                            FrameBuffer::Vulkan(f) => f,
-                            FrameBuffer::None => bail!("Invalid framebuffer type {}", frame_buffer),
-                        }
-                        .clone(),
-                        false,
-                        clear_values,
-                    )?
-                    /*.draw(
-                        render_pipeline.pipeline.clone(),
-                        &self.dynamic_state,
-                        draw_data,
-                        (),
-                        (),
-                    )?*/
-                    .end_render_pass()?
-                    .build()?;
-
-                r.submit(acquire_future, command_buffer)?
+                r.draw_data(render_pipeline, clear_values, draw_data, frame_buffers)?
             }
-            Renderer::None => true,
+            Renderer::None => false,
         })
     }
 }

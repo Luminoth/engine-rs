@@ -4,7 +4,7 @@ use derivative::Derivative;
 use failure::{bail, format_err, Error};
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::pool::standard::StandardCommandPoolBuilder;
-use vulkano::command_buffer::{AutoCommandBuffer, AutoCommandBufferBuilder, DynamicState};
+use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState};
 use vulkano::device::{Device, DeviceExtensions, Queue};
 use vulkano::format::FormatDesc;
 use vulkano::framebuffer::{Framebuffer, FramebufferAbstract, Subpass};
@@ -15,14 +15,13 @@ use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::swapchain::{
     AcquireError, PresentMode, Surface, SurfaceTransform, Swapchain, SwapchainAcquireFuture,
+    SwapchainCreationError,
 };
 use vulkano::sync::{FlushError, GpuFuture};
 use vulkano_win::VkSurfaceBuild;
 use winit::{EventsLoop, Window, WindowBuilder};
 
 use crate::*;
-
-type VertexBuffer = Arc<CpuAccessibleBuffer<[Vertex]>>;
 
 #[derive(Derivative)]
 #[derivative(Debug)]
@@ -168,8 +167,30 @@ impl VulkanRendererState {
         self.dynamic_state.viewports = Some(vec![viewport]);
     }
 
-    pub(crate) fn get_current_swapchain_image(&self) -> usize {
-        self.current_swapchain_image
+    pub(crate) fn recreate_swapchain(&mut self) -> Result<bool> {
+        let dimensions = if let Some(dimensions) = self.get_window().get_inner_size() {
+            // convert to physical pixels
+            let dimensions: (u32, u32) = dimensions
+                .to_physical(self.get_window().get_hidpi_factor())
+                .into();
+            [dimensions.0, dimensions.1]
+        } else {
+            bail!("Window no longer exists!");
+        };
+
+        println!("Recreating swapchain...");
+        let (new_swapchain, new_images) = match self.swapchain.recreate_with_dimension(dimensions) {
+            Ok(r) => r,
+            // This error tends to happen when the user is manually resizing the window.
+            // Simply restarting the loop is the easiest way to fix this issue.
+            Err(SwapchainCreationError::UnsupportedDimensions) => return Ok(false),
+            Err(err) => return Err(Error::from(err)),
+        };
+
+        self.swapchain = new_swapchain;
+        self.swapchain_images = new_images;
+
+        Ok(true)
     }
 
     //#region CPU Buffers
@@ -187,21 +208,14 @@ impl VulkanRendererState {
 
     pub fn create_cpu_buffer_iter<V, T>(&self, data: V) -> Result<Arc<CpuAccessibleBuffer<[T]>>>
     where
-        V: AsRef<Vec<T>>,
+        V: Into<Vec<T>>,
         T: Content + Clone + 'static,
     {
         Ok(CpuAccessibleBuffer::from_iter(
             self.device.clone(),
             BufferUsage::all(),
-            data.as_ref().iter().cloned(),
+            data.into().iter().cloned(),
         )?)
-    }
-
-    pub fn create_vertex_buffer<V>(&self, vertices: V) -> Result<VertexBuffer>
-    where
-        V: AsRef<Vec<Vertex>>,
-    {
-        self.create_cpu_buffer_iter(vertices)
     }
 
     //#endregion
@@ -333,7 +347,7 @@ impl VulkanRendererState {
         }
     }
 
-    pub(crate) fn acquire_swapchain(&mut self) -> Result<Option<SwapchainAcquireFuture<Window>>> {
+    fn acquire_swapchain(&mut self) -> Result<Option<SwapchainAcquireFuture<Window>>> {
         let (swapchain_image, acquire_future) =
             match vulkano::swapchain::acquire_next_image(self.swapchain.clone(), None) {
                 Ok(result) => result,
@@ -347,11 +361,58 @@ impl VulkanRendererState {
         Ok(Some(acquire_future))
     }
 
-    pub(crate) fn submit(
+    pub(crate) fn draw_data<F>(
         &mut self,
-        acquire_future: SwapchainAcquireFuture<Window>,
-        command_buffer: AutoCommandBuffer,
-    ) -> Result<bool> {
+        render_pipeline: &RenderPipeline,
+        clear_values: [f32; 4],
+        draw_data: &VertexBuffer,
+        frame_buffers: F,
+    ) -> Result<bool>
+    where
+        F: AsRef<Vec<FrameBuffer>>,
+    {
+        let acquire_future = self.acquire_swapchain()?;
+        if acquire_future.is_none() {
+            return Ok(false);
+        }
+        let acquire_future = acquire_future.unwrap();
+
+        let frame_buffers = frame_buffers.as_ref();
+        let frame_buffer = &frame_buffers[self.current_swapchain_image];
+
+        let clear_values = vec![clear_values.into()];
+
+        let command_buffer = self
+            .create_primary_one_time_submit_command_buffer()?
+            .begin_render_pass(
+                match frame_buffer {
+                    FrameBuffer::Vulkan(f) => f,
+                    FrameBuffer::None => bail!("Invalid framebuffer type {}", frame_buffer),
+                }
+                .clone(),
+                false,
+                clear_values,
+            )?
+            .draw(
+                match render_pipeline {
+                    RenderPipeline::Vulkan(p) => p,
+                    RenderPipeline::None => {
+                        bail!("Invalid render pipeline type {}", render_pipeline)
+                    }
+                }
+                .clone(),
+                &self.dynamic_state,
+                vec![match draw_data {
+                    VertexBuffer::Vulkan(v) => v,
+                    VertexBuffer::None => bail!("Invalid vertex buffer type {}", draw_data),
+                }
+                .clone()],
+                (),
+                (),
+            )?
+            .end_render_pass()?
+            .build()?;
+
         let future = self
             .frame_future
             .take()

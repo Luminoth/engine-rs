@@ -1,15 +1,15 @@
 mod actor;
 pub mod components;
+mod scene;
 
 use chrono::prelude::*;
 use failure::Error;
 use winit::EventsLoop;
 
 pub use actor::*;
+use scene::*;
 
 pub type Result<T> = std::result::Result<T, Error>;
-
-// https://github.com/vulkano-rs/vulkano-examples/blob/master/src/bin/triangle.rs
 
 pub enum RendererType {
     Vulkan,
@@ -55,6 +55,8 @@ pub struct Engine {
     frame_buffers: Vec<renderer::FrameBuffer>,
     render_pipeline: renderer::RenderPipeline,
 
+    scene: Scene,
+
     stats: EngineStats,
     debug: EngineDebug,
 }
@@ -81,6 +83,9 @@ impl Engine {
             render_pass: renderer::RenderPass::None,
             frame_buffers: Vec::new(),
             render_pipeline: renderer::RenderPipeline::None,
+
+            scene: Scene::default(),
+
             stats: EngineStats::default(),
             debug: EngineDebug::default(),
         })
@@ -89,7 +94,17 @@ impl Engine {
     pub fn load_scene(&mut self) -> Result<()> {
         println!("Loading scene...");
 
-        // TODO: setup the vertex buffer
+        self.scene.vertex_buffer = self.renderer.create_vertex_buffer(vec![
+            renderer::Vertex {
+                position: [-0.5, -0.25, 0.0],
+            },
+            renderer::Vertex {
+                position: [0.0, 0.5, 0.0],
+            },
+            renderer::Vertex {
+                position: [0.25, -0.1, 0.0],
+            },
+        ])?;
 
         let (vs, fs) = self
             .renderer
@@ -125,7 +140,11 @@ impl Engine {
             self.renderer.begin_frame();
 
             if recreate_swapchain {
-                // TODO: recreate the swapchain
+                if !self.renderer.recreate_swapchain()? {
+                    continue;
+                }
+
+                self.frame_buffers = self.renderer.create_frame_buffers(&self.render_pass)?;
 
                 recreate_swapchain = false;
             }
@@ -133,6 +152,7 @@ impl Engine {
             if !self.renderer.draw_data(
                 &self.render_pipeline,
                 [0.0, 0.0, 1.0, 1.0],
+                &self.scene.vertex_buffer,
                 &self.frame_buffers,
             )? {
                 recreate_swapchain = true;
