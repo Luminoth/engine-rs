@@ -9,6 +9,7 @@ use vulkano::device::{Device, DeviceExtensions, Queue};
 use vulkano::format::FormatDesc;
 use vulkano::framebuffer::{Framebuffer, FramebufferAbstract, Subpass};
 use vulkano::image::{Dimensions, StorageImage, SwapchainImage};
+use vulkano::instance::debug::DebugCallback;
 use vulkano::instance::{Instance, PhysicalDevice};
 use vulkano::memory::Content;
 use vulkano::pipeline::viewport::Viewport;
@@ -27,6 +28,9 @@ use crate::*;
 #[derivative(Debug)]
 pub struct VulkanRendererState {
     instance: Arc<Instance>,
+
+    #[derivative(Debug = "ignore")]
+    debug_callback: Option<DebugCallback>,
 
     device: Arc<Device>,
 
@@ -50,15 +54,35 @@ pub struct VulkanRendererState {
 
 impl VulkanRendererState {
     pub fn new(events_loop: &EventsLoop) -> Result<Self> {
-        let extensions = vulkano_win::required_extensions();
+        // TODO: pass in the values rather than pulling from cargo
+        let app_info = vulkano::app_info_from_cargo_toml!();
+
+        let mut extensions = vulkano_win::required_extensions();
         // TODO: what about application-required extensions?
+
+        if cfg!(feature = "validation") {
+            println!("Enabling validation layers...");
+            extensions.ext_debug_report = true;
+        }
+
+        let mut layers = Vec::new();
 
         println!(
             "Initializing Vulkan renderer...
-\tExtensions: {:?}",
-            extensions
+\tApp Info: {:?}
+\tExtensions: {:?}
+\tLayers: {:?}",
+            app_info, extensions, layers,
         );
-        let instance = Instance::new(None, &extensions, None)?;
+        let instance = Instance::new(Some(&app_info), &extensions, layers)?;
+
+        let mut debug_callback = None;
+
+        if cfg!(feature = "validation") {
+            debug_callback = Some(DebugCallback::errors_and_warnings(&instance, |msg| {
+                eprintln!("Debug callback: {:?}", msg.description);
+            })?);
+        }
 
         // TODO: need to do application requirement filtering here
         // and should allow the application to select between
@@ -127,6 +151,7 @@ impl VulkanRendererState {
 
         Ok(Self {
             instance,
+            debug_callback,
             device,
             graphics_queue,
             surface,
