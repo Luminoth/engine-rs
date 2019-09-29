@@ -15,6 +15,27 @@ pub use vulkan::VulkanRendererState;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+pub(crate) fn get_window_dimensions(window: &Window) -> Result<[u32; 2]> {
+    Ok(if let Some(dimensions) = window.get_inner_size() {
+        // convert to physical pixels
+        let dimensions: (u32, u32) = dimensions.to_physical(window.get_hidpi_factor()).into();
+        [dimensions.0, dimensions.1]
+    } else {
+        bail!("Window no longer exists");
+    })
+}
+
+#[derive(Default, Debug, Copy, Clone, PartialEq)]
+pub struct Vertex {
+    pub position: [f32; 3],
+}
+vulkano::impl_vertex!(Vertex, position);
+
+#[derive(Default, Debug, Copy, Clone, PartialEq)]
+pub struct Triangle {
+    pub vertices: [Vertex; 3],
+}
+
 #[derive(Derivative)]
 #[derivative(Default)]
 pub enum VertexBuffer {
@@ -150,7 +171,7 @@ impl Renderer {
                 shaders::simple::vs::Shader::load(r.get_device().clone())?,
                 shaders::simple::fs::Shader::load(r.get_device().clone())?,
             ),
-            Renderer::None => bail!("Shaders not supported!"),
+            Renderer::None => bail!("Shaders not supported"),
         })
     }
 
@@ -209,7 +230,6 @@ impl Renderer {
         }
     }
 
-    // TODO: this should just take the command buffers to execute
     pub fn draw_data<F>(
         &mut self,
         render_pipeline: &RenderPipeline,
@@ -227,15 +247,4 @@ impl Renderer {
             Renderer::None => false,
         })
     }
-}
-
-#[derive(Default, Debug, Copy, Clone, PartialEq)]
-pub struct Vertex {
-    pub position: [f32; 3],
-}
-vulkano::impl_vertex!(Vertex, position);
-
-#[derive(Default, Debug, Copy, Clone, PartialEq)]
-pub struct Triangle {
-    pub vertices: [Vertex; 3],
 }

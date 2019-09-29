@@ -108,23 +108,13 @@ impl VulkanRendererState {
             .unwrap();
         let format = capabilities.supported_formats[0].0;
 
-        let initial_dimensions = if let Some(dimensions) = surface.window().get_inner_size() {
-            // convert to physical pixels
-            let dimensions: (u32, u32) = dimensions
-                .to_physical(surface.window().get_hidpi_factor())
-                .into();
-            [dimensions.0, dimensions.1]
-        } else {
-            bail!("Window no longer exists!");
-        };
-
         println!("Creating swapchain...");
         let (swapchain, swapchain_images) = Swapchain::new(
             device.clone(),
             surface.clone(),
             capabilities.min_image_count,
             format,
-            initial_dimensions,
+            crate::get_window_dimensions(surface.window())?,
             1,
             capabilities.supported_usage_flags,
             &graphics_queue,
@@ -168,18 +158,11 @@ impl VulkanRendererState {
     }
 
     pub(crate) fn recreate_swapchain(&mut self) -> Result<bool> {
-        let dimensions = if let Some(dimensions) = self.get_window().get_inner_size() {
-            // convert to physical pixels
-            let dimensions: (u32, u32) = dimensions
-                .to_physical(self.get_window().get_hidpi_factor())
-                .into();
-            [dimensions.0, dimensions.1]
-        } else {
-            bail!("Window no longer exists!");
-        };
-
         println!("Recreating swapchain...");
-        let (new_swapchain, new_images) = match self.swapchain.recreate_with_dimension(dimensions) {
+        let (new_swapchain, new_images) = match self
+            .swapchain
+            .recreate_with_dimension(crate::get_window_dimensions(self.surface.window())?)
+        {
             Ok(r) => r,
             // This error tends to happen when the user is manually resizing the window.
             // Simply restarting the loop is the easiest way to fix this issue.
@@ -306,7 +289,7 @@ impl VulkanRendererState {
 
                 frame_buffers
             }
-            _ => bail!("Render pass type {} not supported!", render_pass),
+            _ => bail!("Render pass type {} not supported", render_pass),
         })
     }
 
@@ -331,7 +314,7 @@ impl VulkanRendererState {
                     .render_pass(Subpass::from(rp.clone(), 0).unwrap())
                     .build(self.device.clone())?,
             )),
-            _ => bail!("Render pass type {} not supported!", render_pass),
+            _ => bail!("Render pass type {} not supported", render_pass),
         })
     }
 
@@ -358,6 +341,7 @@ impl VulkanRendererState {
             };
 
         self.current_swapchain_image = swapchain_image;
+
         Ok(Some(acquire_future))
     }
 

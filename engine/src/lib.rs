@@ -5,7 +5,7 @@ mod scene;
 use chrono::prelude::*;
 use failure::Error;
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
-use winit::EventsLoop;
+use winit::{Event, EventsLoop, Window};
 
 pub use actor::*;
 use scene::*;
@@ -47,6 +47,8 @@ struct EngineDebug {
     imgui: imgui::Context,
     imgui_platform: WinitPlatform,
     enable_debug_window: bool,
+
+    last_frame: std::time::Instant,
 }
 
 impl Default for EngineDebug {
@@ -72,7 +74,34 @@ impl Default for EngineDebug {
             imgui,
             imgui_platform,
             enable_debug_window: false,
+            last_frame: std::time::Instant::now(),
         }
+    }
+}
+
+impl EngineDebug {
+    fn attach_window(&mut self, window: &Window) {
+        self.imgui_platform
+            .attach_window(self.imgui.io_mut(), window, HiDpiMode::Default);
+    }
+
+    #[allow(dead_code)]
+    fn handle_event(&mut self, window: &Window, event: &Event) {
+        self.imgui_platform
+            .handle_event(self.imgui.io_mut(), window, event);
+    }
+
+    #[allow(dead_code)]
+    fn prepare_frame(&mut self, window: &Window) {
+        self.imgui_platform
+            .prepare_frame(self.imgui.io_mut(), window)
+            .unwrap_or_else(|e| eprintln!("{}", e));
+        self.last_frame = self.imgui.io_mut().update_delta_time(self.last_frame);
+    }
+
+    #[allow(dead_code)]
+    fn prepare_render(&self, ui: &imgui::Ui, window: &Window) {
+        self.imgui_platform.prepare_render(ui, window);
     }
 }
 
@@ -119,11 +148,7 @@ impl Engine {
             debug: EngineDebug::default(),
         };
 
-        engine.debug.imgui_platform.attach_window(
-            engine.debug.imgui.io_mut(),
-            engine.renderer.get_window()?,
-            HiDpiMode::Default,
-        );
+        engine.debug.attach_window(engine.renderer.get_window()?);
 
         Ok(engine)
     }
@@ -171,8 +196,6 @@ impl Engine {
 
         let mut quit = false;
         let mut recreate_swapchain = false;
-        let mut _last_frame = std::time::Instant::now();
-
         loop {
             let frame_start = Utc::now();
 
@@ -182,11 +205,7 @@ impl Engine {
                 /*self.renderer
                 .get_window()
                 .and_then(|window| {
-                    self.debug.imgui_platform.handle_event(
-                        self.debug.imgui.io_mut(),
-                        self.renderer.get_window()?,
-                        &event,
-                    );
+                    self.debug.handle_event(window, &event);
 
                     Ok(())
                 })
@@ -217,26 +236,12 @@ impl Engine {
                 recreate_swapchain = false;
             }
 
-            /*self.debug
-                .imgui_platform
-                .prepare_frame(self.debug.imgui.io_mut(), self.renderer.get_window()?)
-                .unwrap_or_else(|e| eprintln!("{}", e));
-            last_frame = self.debug.imgui.io_mut().update_delta_time(last_frame);
-
+            /*self.debug.prepare_frame(self.renderer.get_window()?);
             let ui = self.debug.imgui.frame();*/
 
-            if !self.renderer.draw_data(
-                &self.render_pipeline,
-                [0.0, 0.0, 1.0, 1.0],
-                &self.scene.vertex_buffer,
-                &self.frame_buffers,
-            )? {
-                recreate_swapchain = true;
-            }
+            recreate_swapchain = !self.render_scene()?;
 
-            /*self.debug
-                .imgui_platform
-                .prepare_render(&ui, self.renderer.get_window()?);
+            /*self.debug.prepare_render(&ui, self.renderer.get_window()?);
             // TODO: render debug data
             let _draw_data = ui.render();*/
 
@@ -266,5 +271,18 @@ impl Engine {
         }
 
         Ok(())
+    }
+
+    fn render_scene(&mut self) -> Result<bool> {
+        if !self.renderer.draw_data(
+            &self.render_pipeline,
+            [0.0, 0.0, 1.0, 1.0],
+            &self.scene.vertex_buffer,
+            &self.frame_buffers,
+        )? {
+            return Ok(false);
+        }
+
+        Ok(true)
     }
 }
