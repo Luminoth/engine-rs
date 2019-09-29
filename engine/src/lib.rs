@@ -19,17 +19,42 @@ pub enum RendererType {
 struct EngineStats {
     frame_count: u64,
     start_time: DateTime<Utc>,
+    last_frame_start: DateTime<Utc>,
     last_fps_dump: DateTime<Utc>,
 }
 
 impl EngineStats {
-    pub fn fps(&self) -> f32 {
+    fn frame_time(&self) -> i64 {
+        (Utc::now() - self.last_frame_start).num_milliseconds()
+    }
+
+    fn fps(&self) -> f32 {
         let duration = (Utc::now() - self.start_time).num_seconds();
         if duration == 0 {
             0.0
         } else {
             self.frame_count as f32 / duration as f32
         }
+    }
+
+    fn log_frame_stats(&mut self) {
+        let now = Utc::now();
+        if (now - self.last_fps_dump).num_seconds() < 5 {
+            return;
+        }
+
+        // TODO:  average FPS vs last frame time extrapolated
+        // also print the frame time
+        println!(
+            "Render Stats:
+\tFrames: {}
+\tFrame Time: {}ms
+\tFPS: {}",
+            self.frame_count,
+            self.frame_time(),
+            self.fps()
+        );
+        self.last_fps_dump = now;
     }
 }
 
@@ -38,16 +63,17 @@ impl Default for EngineStats {
         Self {
             frame_count: 0,
             start_time: Utc::now(),
+            last_frame_start: Utc::now(),
             last_fps_dump: Utc::now(),
         }
     }
 }
 
 struct EngineDebug {
-    imgui: imgui::Context,
-    imgui_platform: WinitPlatform,
     enable_debug_window: bool,
 
+    imgui: imgui::Context,
+    imgui_platform: WinitPlatform,
     last_frame: std::time::Instant,
 }
 
@@ -106,12 +132,15 @@ impl EngineDebug {
 }
 
 pub struct Engine {
+    quit: bool,
+
     events_loop: EventsLoop,
 
     renderer: renderer::Renderer,
     render_pass: renderer::RenderPass,
     frame_buffers: Vec<renderer::FrameBuffer>,
     render_pipeline: renderer::RenderPipeline,
+    recreate_swapchain: bool,
 
     scene: Scene,
 
@@ -136,11 +165,15 @@ impl Engine {
         renderer.get_window()?.set_title(&appid.into());
 
         let mut engine = Self {
+            quit: false,
+
             events_loop,
+
             renderer,
             render_pass: renderer::RenderPass::None,
             frame_buffers: Vec::new(),
             render_pipeline: renderer::RenderPipeline::None,
+            recreate_swapchain: false,
 
             scene: Scene::default(),
 
@@ -194,78 +227,38 @@ impl Engine {
     pub fn run(&mut self) -> Result<()> {
         println!("Running...");
 
-        let mut quit = false;
-        let mut recreate_swapchain = false;
         loop {
-            let frame_start = Utc::now();
+            self.stats.last_frame_start = Utc::now();
 
             self.renderer.begin_frame();
 
-            self.events_loop.poll_events(|event| {
-                /*self.renderer
-                .get_window()
-                .and_then(|window| {
-                    self.debug.handle_event(window, &event);
+            self.handle_events()?;
 
-                    Ok(())
-                })
-                .unwrap_or_else(|e| {
-                    eprintln!("No window");
-                });*/
-
-                match event {
-                    winit::Event::WindowEvent {
-                        event: winit::WindowEvent::CloseRequested,
-                        ..
-                    } => quit = true,
-                    winit::Event::WindowEvent {
-                        event: winit::WindowEvent::Resized(_),
-                        ..
-                    } => recreate_swapchain = true,
-                    _ => (),
-                }
-            });
-
-            if recreate_swapchain {
+            if self.recreate_swapchain {
                 if !self.renderer.recreate_swapchain()? {
                     continue;
                 }
 
                 self.frame_buffers = self.renderer.create_frame_buffers(&self.render_pass)?;
 
-                recreate_swapchain = false;
+                self.recreate_swapchain = false;
             }
 
             /*self.debug.prepare_frame(self.renderer.get_window()?);
-            let ui = self.debug.imgui.frame();*/
+            let _ui = self.debug.imgui.frame();*/
 
-            recreate_swapchain = !self.render_scene()?;
+            self.render_scene()?;
 
             /*self.debug.prepare_render(&ui, self.renderer.get_window()?);
+
             // TODO: render debug data
+
             let _draw_data = ui.render();*/
 
             self.stats.frame_count += 1;
+            self.stats.log_frame_stats();
 
-            let now = Utc::now();
-            let frame_time = now - frame_start;
-
-            // TODO:  average FPS vs last frame time extrapolated
-            // also print the frame time
-            if (now - self.stats.last_fps_dump).num_seconds() >= 1 {
-                println!(
-                    "Render Stats:
-\tFrames: {}
-\tFrame Time: {}ms
-\tFPS: {}",
-                    self.stats.frame_count,
-                    frame_time.num_milliseconds(),
-                    self.stats.fps()
-                );
-                self.stats.last_fps_dump = now.clone();
-            }
-
-            if quit {
+            if self.quit {
                 break;
             }
         }
@@ -273,16 +266,46 @@ impl Engine {
         Ok(())
     }
 
-    fn render_scene(&mut self) -> Result<bool> {
+    fn handle_events(&mut self) -> Result<()> {
+        let window = self.renderer.get_window()?;
+        let debug = &mut self.debug;
+
+        let mut quit = false;
+        let mut recreate_swapchain = false;
+
+        self.events_loop.poll_events(|event| {
+            debug.handle_event(window, &event);
+
+            match event {
+                winit::Event::WindowEvent {
+                    event: winit::WindowEvent::CloseRequested,
+                    ..
+                } => quit = true,
+                winit::Event::WindowEvent {
+                    event: winit::WindowEvent::Resized(_),
+                    ..
+                } => recreate_swapchain = true,
+                _ => (),
+            }
+        });
+
+        self.quit = quit;
+        self.recreate_swapchain = recreate_swapchain;
+
+        Ok(())
+    }
+
+    fn render_scene(&mut self) -> Result<()> {
         if !self.renderer.draw_data(
             &self.render_pipeline,
             [0.0, 0.0, 1.0, 1.0],
             &self.scene.vertex_buffer,
             &self.frame_buffers,
         )? {
-            return Ok(false);
+            self.recreate_swapchain = true;
+            return Ok(());
         }
 
-        Ok(true)
+        Ok(())
     }
 }
