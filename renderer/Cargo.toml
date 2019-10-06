@@ -17,6 +17,6 @@ winit = "0.19"
 
 [features]
 
-default = ["validation"]
-
 validation = []
+vktrace = []
+renderdoc = []

@@ -10,7 +10,7 @@ use vulkano::format::FormatDesc;
 use vulkano::framebuffer::{Framebuffer, FramebufferAbstract, Subpass};
 use vulkano::image::{Dimensions, StorageImage, SwapchainImage};
 use vulkano::instance::debug::DebugCallback;
-use vulkano::instance::{Instance, PhysicalDevice};
+use vulkano::instance::{Instance, InstanceExtensions, LayerProperties, PhysicalDevice};
 use vulkano::memory::Content;
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::GraphicsPipeline;
@@ -57,22 +57,53 @@ impl VulkanRendererState {
         // TODO: pass in the values rather than pulling from cargo
         let app_info = vulkano::app_info_from_cargo_toml!();
 
+        let supported_instance_extensions = InstanceExtensions::supported_by_core()?;
+
         let mut extensions = vulkano_win::required_extensions();
         // TODO: what about application-required extensions?
 
         if cfg!(feature = "validation") {
-            println!("Enabling validation layers...");
+            println!("Enabling debug reporting...");
             extensions.ext_debug_report = true;
         }
 
+        let supported_layers: Vec<LayerProperties> = vulkano::instance::layers_list()?.collect();
+
+        // TODO: layers would be better dealt with using a combination
+        // of features and VK_INSTANCE_LAYERS to turn specific ones on or off
+
         let mut layers = Vec::new();
+        if cfg!(feature = "validation") {
+            println!("Enabling validation...");
+            layers.push("VK_LAYER_LUNARG_core_validation");
+            layers.push("VK_LAYER_LUNARG_standard_validation");
+        }
+
+        if cfg!(feature = "vktrace") {
+            println!("Enabling vktrace...");
+            layers.push("VK_LAYER_LUNARG_vktrace");
+        }
+
+        if cfg!(feature = "renderdoc") {
+            println!("Enabling renderdoc capture...");
+            layers.push("VK_LAYER_RENDERDOC_Capture");
+        }
 
         println!(
             "Initializing Vulkan renderer...
 \tApp Info: {:?}
-\tExtensions: {:?}
-\tLayers: {:?}",
-            app_info, extensions, layers,
+\tSupported Extensions: {:?}
+\tRequested Extensions: {:?}
+\tSupported Layers: {:?}
+\tRequested Layers: {:?}",
+            app_info,
+            supported_instance_extensions,
+            extensions,
+            supported_layers
+                .iter()
+                .map(|x| x.name())
+                .collect::<Vec<_>>(),
+            layers,
         );
         let instance = Instance::new(Some(&app_info), &extensions, layers)?;
 
@@ -93,16 +124,21 @@ impl VulkanRendererState {
         let physical_device = PhysicalDevice::enumerate(&instance)
             .next()
             .ok_or_else(|| format_err!("No devices available!"))?;
+
+        let supported_device_extensions = DeviceExtensions::supported_by_device(physical_device);
+
         println!(
             "Got physical device:
 \tName: {}
 \tType: {:?}
 \tAPI Version: {}
-\tFeatures: {:?}",
+\tFeatures: {:?}
+\tSupported Extensions: {:?}",
             physical_device.name(),
             physical_device.ty(),
             physical_device.api_version(),
             physical_device.supported_features(),
+            supported_device_extensions,
         );
 
         let graphics_queue_family = physical_device
