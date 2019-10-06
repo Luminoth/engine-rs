@@ -151,7 +151,7 @@ impl VulkanRendererState {
             ..DeviceExtensions::none()
         };
 
-        println!("Creating device...");
+        println!("Creating logical device...");
         let (device, mut graphics_queues) = Device::new(
             physical_device,
             physical_device.supported_features(),
@@ -168,11 +168,20 @@ impl VulkanRendererState {
             .unwrap();
         let format = capabilities.supported_formats[0].0;
 
+        // TODO: use Fifo if vsync
+        let present_mode = if capabilities.present_modes.supports(PresentMode::Mailbox) {
+            PresentMode::Mailbox
+        } else {
+            PresentMode::Fifo
+        };
+
+        // TODO: comb over https://vulkan-tutorial.com/en/Drawing_a_triangle/Presentation/Swap_chain
+
         println!("Creating swapchain...");
         let (swapchain, swapchain_images) = Swapchain::new(
             device.clone(),
             surface.clone(),
-            capabilities.min_image_count,
+            capabilities.min_image_count + 1,
             format,
             crate::get_window_dimensions(surface.window())?,
             1,
@@ -180,7 +189,7 @@ impl VulkanRendererState {
             &graphics_queue,
             SurfaceTransform::Identity,
             alpha,
-            PresentMode::Fifo,
+            present_mode,
             true,
             None,
         )?;
