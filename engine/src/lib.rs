@@ -1,5 +1,6 @@
 mod actor;
 pub mod components;
+pub mod config;
 mod scene;
 
 use chrono::prelude::*;
@@ -149,7 +150,11 @@ pub struct Engine {
 }
 
 impl Engine {
-    pub fn new<S>(appid: S, renderer_type: RendererType) -> Result<Self>
+    pub fn new<S>(
+        appid: S,
+        renderer_type: RendererType,
+        window_config: &config::WindowConfig,
+    ) -> Result<Self>
     where
         S: Into<String>,
     {
@@ -162,7 +167,17 @@ impl Engine {
                 renderer::Renderer::Vulkan(renderer::VulkanRendererState::new(&events_loop)?)
             }
         };
-        renderer.get_window()?.set_title(&appid.into());
+
+        println!("Resizing window {:?}", window_config);
+        let window = renderer.get_window()?;
+        window.set_title(&appid.into());
+        window.set_inner_size(winit::dpi::LogicalSize::new(
+            window_config.width.into(),
+            window_config.height.into(),
+        ));
+        if window_config.fullscreen {
+            window.set_fullscreen(Some(window.get_current_monitor()));
+        }
 
         let mut engine = Self {
             quit: false,

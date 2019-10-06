@@ -84,6 +84,9 @@ impl VulkanRendererState {
             })?);
         }
 
+        println!("Creating surface...");
+        let surface = WindowBuilder::new().build_vk_surface(events_loop, instance.clone())?;
+
         // TODO: need to do application requirement filtering here
         // and should allow the application to select between
         // all devices that fit within those constraints
@@ -101,9 +104,6 @@ impl VulkanRendererState {
             physical_device.api_version(),
             physical_device.supported_features(),
         );
-
-        println!("Creating surface...");
-        let surface = WindowBuilder::new().build_vk_surface(events_loop, instance.clone())?;
 
         let graphics_queue_family = physical_device
             .queue_families()

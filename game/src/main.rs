@@ -3,7 +3,13 @@ use failure::Error;
 use engine::{Engine, RendererType};
 
 fn main() -> Result<(), Error> {
-    let mut engine = Engine::new("engine-rs", RendererType::Vulkan)
+    let window_config = engine::config::WindowConfig {
+        width: 1024,
+        height: 768,
+        fullscreen: false,
+    };
+
+    let mut engine = Engine::new("engine-rs", RendererType::Vulkan, &window_config)
         .unwrap_or_else(|e| panic!("Error initializing engine: {}", e));
 
     engine
