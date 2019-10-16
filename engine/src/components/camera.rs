@@ -1,8 +1,5 @@
+use specs::prelude::*;
+
 // TODO: requires a transform component
+#[derive(Component, Debug)]
 pub struct CameraComponent {}
-
-impl ecs::Component for CameraComponent {}
-
-pub struct CameraSystem {}
-
-impl ecs::System for CameraSystem {}

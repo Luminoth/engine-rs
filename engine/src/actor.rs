@@ -1,7 +1,7 @@
-use ecs::Entity;
+//use specs::prelude::*;
 
 pub struct Actor {
-    entity: Entity,
+    //entity: Entity,
 }
 
 impl Actor {
@@ -10,11 +10,11 @@ impl Actor {
         S: Into<String>,
     {
         Self {
-            entity: Entity::new(id),
+            //entity: Entity::new(),
         }
     }
 
-    pub fn get_entity(&self) -> &Entity {
+    /*pub fn get_entity(&self) -> &Entity {
         &self.entity
-    }
+    }*/
 }

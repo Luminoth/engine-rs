@@ -13,10 +13,11 @@ failure = "0.1"
 imgui = "0.2"
 imgui-winit-support = "0.2"
 parking_lot = "0.9"
+specs = "0.15"
+specs-derive = "0.4"
 winit = "0.19"
 
 serde = { version = "1.0", features = ["derive"] }
 
 core = { path = "../core" }
-ecs = { path = "../ecs" }
 renderer = { path = "../renderer", features = ["validation"] }

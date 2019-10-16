@@ -3,6 +3,9 @@ pub mod components;
 pub mod config;
 mod scene;
 
+#[macro_use]
+extern crate specs_derive;
+
 use chrono::prelude::*;
 use failure::Error;
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
