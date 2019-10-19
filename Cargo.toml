@@ -6,3 +6,5 @@ members = [
     "engine",
     "viewer",
 ]
+
+default-members = [ "viewer" ]
