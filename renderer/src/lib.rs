@@ -4,8 +4,8 @@ mod vulkan;
 use std::fmt;
 use std::sync::Arc;
 
+use anyhow::bail;
 use derivative::Derivative;
-use failure::{bail, Error};
 use vulkano::buffer::CpuAccessibleBuffer;
 use vulkano::framebuffer::{FramebufferAbstract, RenderPassAbstract};
 use vulkano::pipeline::GraphicsPipelineAbstract;
@@ -13,9 +13,7 @@ use winit::Window;
 
 pub use vulkan::VulkanRendererState;
 
-pub type Result<T> = std::result::Result<T, Error>;
-
-pub(crate) fn get_window_dimensions(window: &Window) -> Result<[u32; 2]> {
+pub(crate) fn get_window_dimensions(window: &Window) -> anyhow::Result<[u32; 2]> {
     Ok(if let Some(dimensions) = window.get_inner_size() {
         // convert to physical pixels
         let dimensions: (u32, u32) = dimensions.to_physical(window.get_hidpi_factor()).into();
@@ -120,7 +118,7 @@ pub enum Renderer {
 impl Renderer {
     //#region Window Utils
 
-    pub fn get_window(&self) -> Result<&Window> {
+    pub fn get_window(&self) -> anyhow::Result<&Window> {
         Ok(match self {
             Renderer::Vulkan(r) => r.get_window(),
             Renderer::None => bail!("No window"),
@@ -136,7 +134,7 @@ impl Renderer {
         }
     }
 
-    pub fn recreate_swapchain(&mut self) -> Result<bool> {
+    pub fn recreate_swapchain(&mut self) -> anyhow::Result<bool> {
         Ok(match self {
             Renderer::Vulkan(r) => r.recreate_swapchain()?,
             Renderer::None => true,
@@ -145,7 +143,7 @@ impl Renderer {
 
     //#region CPU Buffers
 
-    pub fn create_vertex_buffer<V>(&self, vertices: V) -> Result<VertexBuffer>
+    pub fn create_vertex_buffer<V>(&self, vertices: V) -> anyhow::Result<VertexBuffer>
     where
         V: Into<Vec<Vertex>>,
     {
@@ -163,7 +161,7 @@ impl Renderer {
 
     pub fn load_simple_shader(
         &self,
-    ) -> Result<(shaders::simple::vs::Shader, shaders::simple::fs::Shader)> {
+    ) -> anyhow::Result<(shaders::simple::vs::Shader, shaders::simple::fs::Shader)> {
         println!("Loading simple shaders...");
 
         Ok(match self {
@@ -179,7 +177,7 @@ impl Renderer {
 
     //#region Render Pass
 
-    pub fn create_simple_render_pass(&self) -> Result<RenderPass> {
+    pub fn create_simple_render_pass(&self) -> anyhow::Result<RenderPass> {
         println!("Creating simple render pass...");
 
         Ok(match self {
@@ -192,7 +190,10 @@ impl Renderer {
 
     //#region Frame Buffers
 
-    pub fn create_frame_buffers(&mut self, render_pass: &RenderPass) -> Result<Vec<FrameBuffer>> {
+    pub fn create_frame_buffers(
+        &mut self,
+        render_pass: &RenderPass,
+    ) -> anyhow::Result<Vec<FrameBuffer>> {
         println!("Creating frame buffers...");
 
         self.init_viewport();
@@ -212,7 +213,7 @@ impl Renderer {
         render_pass: &RenderPass,
         vs: shaders::simple::vs::Shader,
         fs: shaders::simple::fs::Shader,
-    ) -> Result<RenderPipeline> {
+    ) -> anyhow::Result<RenderPipeline> {
         println!("Creating simple pipeline...");
 
         Ok(match self {
@@ -236,7 +237,7 @@ impl Renderer {
         clear_values: [f32; 4],
         draw_data: &VertexBuffer,
         frame_buffers: F,
-    ) -> Result<bool>
+    ) -> anyhow::Result<bool>
     where
         F: AsRef<Vec<FrameBuffer>>,
     {

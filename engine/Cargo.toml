@@ -6,10 +6,14 @@ edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[lib]
+name = "engine"
+path = "src/lib.rs"
+
 [dependencies]
 
+anyhow = "1.0"
 chrono = "0.4"
-failure = "0.1"
 imgui = "0.2"
 imgui-winit-support = "0.2"
 parking_lot = "0.9"

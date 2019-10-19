@@ -7,14 +7,11 @@ mod scene;
 extern crate specs_derive;
 
 use chrono::prelude::*;
-use failure::Error;
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
 use winit::{Event, EventsLoop, Window};
 
 pub use actor::*;
 use scene::*;
-
-pub type Result<T> = std::result::Result<T, Error>;
 
 pub enum RendererType {
     Vulkan,
@@ -157,7 +154,7 @@ impl Engine {
         appid: S,
         renderer_type: RendererType,
         window_config: &config::WindowConfig,
-    ) -> Result<Self>
+    ) -> anyhow::Result<Self>
     where
         S: Into<String>,
     {
@@ -204,7 +201,7 @@ impl Engine {
         Ok(engine)
     }
 
-    pub fn load_scene(&mut self) -> Result<()> {
+    pub fn load_scene(&mut self) -> anyhow::Result<()> {
         println!("Loading scene...");
 
         self.scene.vertex_buffer = self.renderer.create_vertex_buffer(vec![
@@ -242,7 +239,7 @@ impl Engine {
         Ok(())
     }
 
-    pub fn run(&mut self) -> Result<()> {
+    pub fn run(&mut self) -> anyhow::Result<()> {
         println!("Running...");
 
         loop {
@@ -284,7 +281,7 @@ impl Engine {
         Ok(())
     }
 
-    fn handle_events(&mut self) -> Result<()> {
+    fn handle_events(&mut self) -> anyhow::Result<()> {
         let window = self.renderer.get_window()?;
         let debug = &mut self.debug;
 
@@ -313,7 +310,7 @@ impl Engine {
         Ok(())
     }
 
-    fn render_scene(&mut self) -> Result<()> {
+    fn render_scene(&mut self) -> anyhow::Result<()> {
         if !self.renderer.draw_data(
             &self.render_pipeline,
             [0.0, 0.0, 1.0, 1.0],

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
+use anyhow::{anyhow, bail, Error};
 use derivative::Derivative;
-use failure::{bail, format_err, Error};
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::pool::standard::StandardCommandPoolBuilder;
 use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState};
@@ -53,7 +53,7 @@ pub struct VulkanRendererState {
 }
 
 impl VulkanRendererState {
-    pub fn new(events_loop: &EventsLoop) -> Result<Self> {
+    pub fn new(events_loop: &EventsLoop) -> anyhow::Result<Self> {
         // TODO: pass in the values rather than pulling from cargo
         let app_info = vulkano::app_info_from_cargo_toml!();
 
@@ -123,7 +123,7 @@ impl VulkanRendererState {
         // all devices that fit within those constraints
         let physical_device = PhysicalDevice::enumerate(&instance)
             .next()
-            .ok_or_else(|| format_err!("No devices available!"))?;
+            .ok_or_else(|| anyhow!("No devices available!"))?;
 
         let supported_device_extensions = DeviceExtensions::supported_by_device(physical_device);
 
@@ -144,7 +144,7 @@ impl VulkanRendererState {
         let graphics_queue_family = physical_device
             .queue_families()
             .find(|&q| q.supports_graphics() && surface.is_supported(q).unwrap_or(false))
-            .ok_or_else(|| format_err!("No graphics queues available!"))?;
+            .ok_or_else(|| anyhow!("No graphics queues available!"))?;
 
         let device_ext = DeviceExtensions {
             khr_swapchain: true,
@@ -227,7 +227,7 @@ impl VulkanRendererState {
         self.dynamic_state.viewports = Some(vec![viewport]);
     }
 
-    pub(crate) fn recreate_swapchain(&mut self) -> Result<bool> {
+    pub(crate) fn recreate_swapchain(&mut self) -> anyhow::Result<bool> {
         println!("Recreating swapchain...");
         let (new_swapchain, new_images) = match self
             .swapchain
@@ -237,7 +237,7 @@ impl VulkanRendererState {
             // This error tends to happen when the user is manually resizing the window.
             // Simply restarting the loop is the easiest way to fix this issue.
             Err(SwapchainCreationError::UnsupportedDimensions) => return Ok(false),
-            Err(err) => return Err(Error::from(err)),
+            Err(err) => bail!(err),
         };
 
         self.swapchain = new_swapchain;
@@ -248,7 +248,7 @@ impl VulkanRendererState {
 
     //#region CPU Buffers
 
-    pub fn create_cpu_buffer<T>(&self, data: T) -> Result<Arc<CpuAccessibleBuffer<T>>>
+    pub fn create_cpu_buffer<T>(&self, data: T) -> anyhow::Result<Arc<CpuAccessibleBuffer<T>>>
     where
         T: Content + 'static,
     {
@@ -259,7 +259,10 @@ impl VulkanRendererState {
         )?)
     }
 
-    pub fn create_cpu_buffer_iter<V, T>(&self, data: V) -> Result<Arc<CpuAccessibleBuffer<[T]>>>
+    pub fn create_cpu_buffer_iter<V, T>(
+        &self,
+        data: V,
+    ) -> anyhow::Result<Arc<CpuAccessibleBuffer<[T]>>>
     where
         V: Into<Vec<T>>,
         T: Content + Clone + 'static,
@@ -280,7 +283,7 @@ impl VulkanRendererState {
         width: u32,
         height: u32,
         format: F,
-    ) -> Result<Arc<StorageImage<F>>>
+    ) -> anyhow::Result<Arc<StorageImage<F>>>
     where
         F: FormatDesc,
     {
@@ -298,7 +301,7 @@ impl VulkanRendererState {
 
     pub fn create_command_buffer(
         &self,
-    ) -> Result<AutoCommandBufferBuilder<StandardCommandPoolBuilder>> {
+    ) -> anyhow::Result<AutoCommandBufferBuilder<StandardCommandPoolBuilder>> {
         Ok(AutoCommandBufferBuilder::new(
             self.device.clone(),
             self.graphics_queue.family(),
@@ -307,7 +310,7 @@ impl VulkanRendererState {
 
     pub(crate) fn create_primary_one_time_submit_command_buffer(
         &self,
-    ) -> Result<AutoCommandBufferBuilder<StandardCommandPoolBuilder>> {
+    ) -> anyhow::Result<AutoCommandBufferBuilder<StandardCommandPoolBuilder>> {
         Ok(AutoCommandBufferBuilder::primary_one_time_submit(
             self.device.clone(),
             self.graphics_queue.family(),
@@ -318,7 +321,7 @@ impl VulkanRendererState {
 
     //#region Render Pass
 
-    pub(crate) fn create_simple_render_pass(&self) -> Result<RenderPass> {
+    pub(crate) fn create_simple_render_pass(&self) -> anyhow::Result<RenderPass> {
         Ok(RenderPass::Vulkan(Arc::new(
             vulkano::single_pass_renderpass!(
                self.device.clone(),
@@ -345,7 +348,7 @@ impl VulkanRendererState {
     pub(crate) fn create_frame_buffers(
         &mut self,
         render_pass: &RenderPass,
-    ) -> Result<Vec<FrameBuffer>> {
+    ) -> anyhow::Result<Vec<FrameBuffer>> {
         Ok(match render_pass {
             RenderPass::Vulkan(rp) => {
                 let mut frame_buffers = Vec::new();
@@ -372,7 +375,7 @@ impl VulkanRendererState {
         render_pass: &RenderPass,
         vs: shaders::simple::vs::Shader,
         fs: shaders::simple::fs::Shader,
-    ) -> Result<RenderPipeline> {
+    ) -> anyhow::Result<RenderPipeline> {
         Ok(match render_pass {
             RenderPass::Vulkan(rp) => RenderPipeline::Vulkan(Arc::new(
                 GraphicsPipeline::start()
@@ -400,14 +403,14 @@ impl VulkanRendererState {
         }
     }
 
-    fn acquire_swapchain(&mut self) -> Result<Option<SwapchainAcquireFuture<Window>>> {
+    fn acquire_swapchain(&mut self) -> anyhow::Result<Option<SwapchainAcquireFuture<Window>>> {
         let (swapchain_image, acquire_future) =
             match vulkano::swapchain::acquire_next_image(self.swapchain.clone(), None) {
                 Ok(result) => result,
                 Err(AcquireError::OutOfDate) => {
                     return Ok(None);
                 }
-                Err(e) => return Err(Error::from(e)),
+                Err(e) => bail!(e),
             };
 
         self.current_swapchain_image = swapchain_image;
@@ -421,7 +424,7 @@ impl VulkanRendererState {
         clear_values: [f32; 4],
         draw_data: &VertexBuffer,
         frame_buffers: F,
-    ) -> Result<bool>
+    ) -> anyhow::Result<bool>
     where
         F: AsRef<Vec<FrameBuffer>>,
     {
