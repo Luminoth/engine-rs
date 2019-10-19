@@ -1,4 +1,6 @@
-#[derive(Default, Debug, Copy, Clone, PartialEq)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Default, Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Quaternion {
     x: f32,
     y: f32,

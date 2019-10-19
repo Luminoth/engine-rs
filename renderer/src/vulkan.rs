@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, bail};
 use derivative::Derivative;
+use log::{info, warn};
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::pool::standard::StandardCommandPoolBuilder;
 use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState};
@@ -63,7 +64,7 @@ impl VulkanRendererState {
         // TODO: what about application-required extensions?
 
         if cfg!(feature = "validation") {
-            println!("Enabling debug reporting...");
+            warn!("Enabling debug reporting...");
             extensions.ext_debug_report = true;
         }
 
@@ -74,22 +75,22 @@ impl VulkanRendererState {
 
         let mut layers = Vec::new();
         if cfg!(feature = "validation") {
-            println!("Enabling validation...");
-            layers.push("VK_LAYER_LUNARG_core_validation");
+            warn!("Enabling validation...");
+            //layers.push("VK_LAYER_LUNARG_core_validation");
             layers.push("VK_LAYER_LUNARG_standard_validation");
         }
 
         if cfg!(feature = "vktrace") {
-            println!("Enabling vktrace...");
+            warn!("Enabling vktrace...");
             layers.push("VK_LAYER_LUNARG_vktrace");
         }
 
         if cfg!(feature = "renderdoc") {
-            println!("Enabling renderdoc capture...");
+            warn!("Enabling renderdoc capture...");
             layers.push("VK_LAYER_RENDERDOC_Capture");
         }
 
-        println!(
+        info!(
             "Initializing Vulkan renderer...
 \tApp Info: {:?}
 \tSupported Extensions: {:?}
@@ -109,13 +110,13 @@ impl VulkanRendererState {
 
         let debug_callback = if cfg!(feature = "validation") {
             Some(DebugCallback::errors_and_warnings(&instance, |msg| {
-                eprintln!("Debug callback: {:?}", msg.description);
+                warn!("Debug callback: {:?}", msg.description);
             })?)
         } else {
             None
         };
 
-        println!("Creating surface...");
+        info!("Creating surface...");
         let surface = WindowBuilder::new().build_vk_surface(events_loop, instance.clone())?;
 
         // TODO: need to do application requirement filtering here
@@ -127,7 +128,7 @@ impl VulkanRendererState {
 
         let supported_device_extensions = DeviceExtensions::supported_by_device(physical_device);
 
-        println!(
+        info!(
             "Got physical device:
 \tName: {}
 \tType: {:?}
@@ -151,7 +152,7 @@ impl VulkanRendererState {
             ..DeviceExtensions::none()
         };
 
-        println!("Creating logical device...");
+        info!("Creating logical device...");
         let (device, mut graphics_queues) = Device::new(
             physical_device,
             physical_device.supported_features(),
@@ -177,7 +178,7 @@ impl VulkanRendererState {
 
         // TODO: comb over https://vulkan-tutorial.com/en/Drawing_a_triangle/Presentation/Swap_chain
 
-        println!("Creating swapchain...");
+        info!("Creating swapchain...");
         let (swapchain, swapchain_images) = Swapchain::new(
             device.clone(),
             surface.clone(),
@@ -228,7 +229,7 @@ impl VulkanRendererState {
     }
 
     pub(crate) fn recreate_swapchain(&mut self) -> anyhow::Result<bool> {
-        println!("Recreating swapchain...");
+        info!("Recreating swapchain...");
         let (new_swapchain, new_images) = match self
             .swapchain
             .recreate_with_dimension(crate::get_window_dimensions(self.surface.window())?)
@@ -494,7 +495,7 @@ impl VulkanRendererState {
                     Some(Box::new(vulkano::sync::now(self.device.clone())) as Box<_>);
             }
             Err(e) => {
-                println!("{:?}", e);
+                warn!("{:?}", e);
                 self.frame_future =
                     Some(Box::new(vulkano::sync::now(self.device.clone())) as Box<_>);
             }

@@ -1,4 +1,4 @@
-mod actor;
+mod assets;
 pub mod components;
 pub mod config;
 mod scene;
@@ -6,11 +6,13 @@ mod scene;
 #[macro_use]
 extern crate specs_derive;
 
+use std::path::Path;
+
 use chrono::prelude::*;
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
+use log::{debug, error, info};
 use winit::{Event, EventsLoop, Window};
 
-pub use actor::*;
 use scene::*;
 
 pub enum RendererType {
@@ -46,7 +48,7 @@ impl EngineStats {
 
         // TODO:  average FPS vs last frame time extrapolated
         // also print the frame time
-        println!(
+        debug!(
             "Render Stats:
 \tFrames: {}
 \tFrame Time: {}ms
@@ -122,7 +124,7 @@ impl EngineDebug {
     fn prepare_frame(&mut self, window: &Window) {
         self.imgui_platform
             .prepare_frame(self.imgui.io_mut(), window)
-            .unwrap_or_else(|e| eprintln!("{}", e));
+            .unwrap_or_else(|e| error!("{}", e));
         self.last_frame = self.imgui.io_mut().update_delta_time(self.last_frame);
     }
 
@@ -158,7 +160,7 @@ impl Engine {
     where
         S: Into<String>,
     {
-        println!("Initializing engine...");
+        info!("Initializing engine...");
 
         let events_loop = EventsLoop::new();
 
@@ -168,7 +170,7 @@ impl Engine {
             }
         };
 
-        println!("Resizing window {:?}", window_config);
+        info!("Resizing window {:?}", window_config);
         let window = renderer.get_window()?;
         window.set_title(&appid.into());
         window.set_inner_size(winit::dpi::LogicalSize::new(
@@ -190,7 +192,7 @@ impl Engine {
             render_pipeline: renderer::RenderPipeline::None,
             recreate_swapchain: false,
 
-            scene: Scene::default(),
+            scene: Scene::new(),
 
             stats: EngineStats::default(),
             debug: EngineDebug::default(),
@@ -201,10 +203,13 @@ impl Engine {
         Ok(engine)
     }
 
-    pub fn load_scene(&mut self) -> anyhow::Result<()> {
-        println!("Loading scene...");
+    pub fn load_scene<P>(&mut self, filepath: P) -> anyhow::Result<()>
+    where
+        P: AsRef<Path>,
+    {
+        self.scene.load(filepath)?;
 
-        self.scene.vertex_buffer = self.renderer.create_vertex_buffer(vec![
+        /*self.scene.vertex_buffer = self.renderer.create_vertex_buffer(vec![
             renderer::Vertex {
                 position: [-0.5, -0.25, 0.0],
             },
@@ -214,7 +219,7 @@ impl Engine {
             renderer::Vertex {
                 position: [0.25, -0.1, 0.0],
             },
-        ])?;
+        ])?;*/
 
         let (vs, fs) = self
             .renderer
@@ -240,7 +245,7 @@ impl Engine {
     }
 
     pub fn run(&mut self) -> anyhow::Result<()> {
-        println!("Running...");
+        info!("Running...");
 
         loop {
             self.stats.last_frame_start = Utc::now();
@@ -311,7 +316,7 @@ impl Engine {
     }
 
     fn render_scene(&mut self) -> anyhow::Result<()> {
-        if !self.renderer.draw_data(
+        /*if !self.renderer.draw_data(
             &self.render_pipeline,
             [0.0, 0.0, 1.0, 1.0],
             &self.scene.vertex_buffer,
@@ -319,7 +324,7 @@ impl Engine {
         )? {
             self.recreate_swapchain = true;
             return Ok(());
-        }
+        }*/
 
         Ok(())
     }

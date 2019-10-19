@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use anyhow::bail;
 use derivative::Derivative;
+use log::info;
 use vulkano::buffer::CpuAccessibleBuffer;
 use vulkano::framebuffer::{FramebufferAbstract, RenderPassAbstract};
 use vulkano::pipeline::GraphicsPipelineAbstract;
@@ -162,7 +163,7 @@ impl Renderer {
     pub fn load_simple_shader(
         &self,
     ) -> anyhow::Result<(shaders::simple::vs::Shader, shaders::simple::fs::Shader)> {
-        println!("Loading simple shaders...");
+        info!("Loading simple shaders...");
 
         Ok(match self {
             Renderer::Vulkan(r) => (
@@ -178,7 +179,7 @@ impl Renderer {
     //#region Render Pass
 
     pub fn create_simple_render_pass(&self) -> anyhow::Result<RenderPass> {
-        println!("Creating simple render pass...");
+        info!("Creating simple render pass...");
 
         Ok(match self {
             Renderer::Vulkan(r) => r.create_simple_render_pass()?,
@@ -194,7 +195,7 @@ impl Renderer {
         &mut self,
         render_pass: &RenderPass,
     ) -> anyhow::Result<Vec<FrameBuffer>> {
-        println!("Creating frame buffers...");
+        info!("Creating frame buffers...");
 
         self.init_viewport();
 
@@ -214,7 +215,7 @@ impl Renderer {
         vs: shaders::simple::vs::Shader,
         fs: shaders::simple::fs::Shader,
     ) -> anyhow::Result<RenderPipeline> {
-        println!("Creating simple pipeline...");
+        info!("Creating simple pipeline...");
 
         Ok(match self {
             Renderer::Vulkan(r) => r.create_simple_render_pipeline(render_pass, vs, fs)?,

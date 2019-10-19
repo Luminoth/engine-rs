@@ -4,5 +4,5 @@ members = [
     "core",
     "renderer",
     "engine",
-    "game",
+    "viewer",
 ]

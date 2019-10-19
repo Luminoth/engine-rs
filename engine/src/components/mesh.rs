@@ -3,9 +3,10 @@ use specs::prelude::*;
 
 use crate::assets::ComponentAsset;
 
-// TODO: requires a transform component
 #[derive(Component, Debug, Serialize, Deserialize)]
-pub struct CameraComponent {}
+pub struct MeshComponent {
+    //pub vertex_buffer: renderer::VertexBuffer,
+}
 
 #[typetag::serde]
-impl ComponentAsset for CameraComponent {}
+impl ComponentAsset for MeshComponent {}

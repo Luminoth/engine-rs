@@ -1,5 +1,7 @@
 use std::ops::*;
 
+use serde::{Deserialize, Serialize};
+
 // TODO: be cleaner to have a derive macro for this
 pub trait Vector: Sub<Output = Self> + Div<f32, Output = Self> + DivAssign<f32> + Sized {
     fn magnitude(&self) -> f32 {
@@ -32,7 +34,7 @@ pub trait Vector: Sub<Output = Self> + Div<f32, Output = Self> + DivAssign<f32> 
 
 //#region Vector2
 
-#[derive(Default, Debug, Copy, Clone, PartialEq)]
+#[derive(Default, Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Vector2 {
     pub x: f32,
     pub y: f32,
@@ -160,7 +162,7 @@ impl DivAssign<f32> for Vector2 {
 
 //#region Vector3
 
-#[derive(Default, Debug, Copy, Clone, PartialEq)]
+#[derive(Default, Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Vector3 {
     pub x: f32,
     pub y: f32,
@@ -330,7 +332,7 @@ impl DivAssign<f32> for Vector3 {
 
 //#region Vector4
 
-#[derive(Default, Debug, Copy, Clone, PartialEq)]
+#[derive(Default, Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Vector4 {
     pub x: f32,
     pub y: f32,
