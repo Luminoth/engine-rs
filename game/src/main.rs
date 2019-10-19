@@ -1,8 +1,8 @@
-use failure::Error;
+use anyhow::Error;
 
 use engine::{Engine, RendererType};
 
-fn main() -> Result<(), Error> {
+fn main() -> anyhow::Result<()> {
     let window_config = engine::config::WindowConfig {
         width: 1024,
         height: 768,

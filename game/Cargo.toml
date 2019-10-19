@@ -12,6 +12,6 @@ path = "src/main.rs"
 
 [dependencies]
 
-failure = "0.1"
+anyhow = "1.0"
 
 engine = { path = "../engine" }
