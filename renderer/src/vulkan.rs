@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use anyhow::{anyhow, bail, Error};
+use anyhow::{anyhow, bail};
 use derivative::Derivative;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::pool::standard::StandardCommandPoolBuilder;
@@ -107,13 +107,13 @@ impl VulkanRendererState {
         );
         let instance = Instance::new(Some(&app_info), &extensions, layers)?;
 
-        let mut debug_callback = None;
-
-        if cfg!(feature = "validation") {
-            debug_callback = Some(DebugCallback::errors_and_warnings(&instance, |msg| {
+        let debug_callback = if cfg!(feature = "validation") {
+            Some(DebugCallback::errors_and_warnings(&instance, |msg| {
                 eprintln!("Debug callback: {:?}", msg.description);
-            })?);
-        }
+            })?)
+        } else {
+            None
+        };
 
         println!("Creating surface...");
         let surface = WindowBuilder::new().build_vk_surface(events_loop, instance.clone())?;

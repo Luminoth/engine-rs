@@ -1,5 +1,3 @@
-use anyhow::Error;
-
 use engine::{Engine, RendererType};
 
 fn main() -> anyhow::Result<()> {
