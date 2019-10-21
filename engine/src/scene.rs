@@ -9,23 +9,16 @@ use core::fs::to_absolute_path;
 
 use crate::assets::{Resource, SceneAsset};
 
+#[derive(Default)]
 pub struct Scene {
-    entities: World,
+    entities: Vec<Entity>,
 }
 
 impl Scene {
-    pub fn new() -> Self {
-        let entities = World::new();
-
-        Self { entities }
-    }
-
-    pub fn load<P>(&mut self, filepath: P) -> anyhow::Result<()>
+    pub fn load<P>(&mut self, world: &mut World, filepath: P) -> anyhow::Result<()>
     where
         P: AsRef<Path>,
     {
-        self.entities = World::new();
-
         let mut filepath = to_absolute_path(filepath)?;
         filepath.set_extension(SceneAsset::EXTENSION);
         info!("Loading scene from {}...", filepath.display());
@@ -41,13 +34,21 @@ impl Scene {
                 warn!("TODO: load prefab {}", prefab);
             }
 
-            let builder = self.entities.create_entity();
+            let builder = world.create_entity();
             for component in actor.components.iter() {
                 warn!("TODO: add component");
             }
-            builder.build();
+            self.entities.push(builder.build());
 
             warn!("actor");
+        }
+
+        Ok(())
+    }
+
+    pub fn unload(&mut self, world: &mut World) -> anyhow::Result<()> {
+        for entity in self.entities.drain(0..) {
+            world.delete_entity(entity)?;
         }
 
         Ok(())

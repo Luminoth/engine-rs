@@ -25,6 +25,7 @@ typetag = "0.1"
 winit = "0.19"
 
 serde = { version = "1.0", features = ["derive"] }
+uuid = { version = "0.8", features = ["serde"] }
 
 core = { path = "../core" }
 renderer = { path = "../renderer", features = ["validation"] }

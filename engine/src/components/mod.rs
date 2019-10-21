@@ -1,3 +1,7 @@
-pub mod camera;
-pub mod mesh;
-pub mod transform;
+mod camera;
+mod mesh;
+mod transform;
+
+pub use camera::*;
+pub use mesh::*;
+pub use transform::*;

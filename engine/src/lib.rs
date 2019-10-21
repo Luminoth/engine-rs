@@ -2,6 +2,7 @@ mod assets;
 pub mod components;
 pub mod config;
 mod scene;
+pub mod systems;
 
 #[macro_use]
 extern crate specs_derive;
@@ -11,9 +12,11 @@ use std::path::Path;
 use chrono::prelude::*;
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
 use log::{debug, error, info};
+use specs::prelude::*;
 use winit::{Event, EventsLoop, Window};
 
 use scene::*;
+use systems::*;
 
 pub enum RendererType {
     Vulkan,
@@ -134,10 +137,12 @@ impl EngineDebug {
     }
 }
 
-pub struct Engine {
+pub struct Engine<'a> {
     quit: bool,
 
     events_loop: EventsLoop,
+
+    dispatcher: AsyncDispatcher<'a, World>,
 
     renderer: renderer::Renderer,
     render_pass: renderer::RenderPass,
@@ -145,13 +150,13 @@ pub struct Engine {
     render_pipeline: renderer::RenderPipeline,
     recreate_swapchain: bool,
 
-    scene: Scene,
+    loaded_scenes: Vec<Scene>,
 
     stats: EngineStats,
     debug: EngineDebug,
 }
 
-impl Engine {
+impl<'a> Engine<'a> {
     pub fn new<S>(
         appid: S,
         renderer_type: RendererType,
@@ -163,6 +168,11 @@ impl Engine {
         info!("Initializing engine...");
 
         let events_loop = EventsLoop::new();
+
+        let world = World::new();
+        let dispatcher = DispatcherBuilder::new()
+            .with_thread_local(RenderSystem)
+            .build_async(world);
 
         let renderer = match renderer_type {
             RendererType::Vulkan => {
@@ -186,13 +196,15 @@ impl Engine {
 
             events_loop,
 
+            dispatcher,
+
             renderer,
             render_pass: renderer::RenderPass::None,
             frame_buffers: Vec::new(),
             render_pipeline: renderer::RenderPipeline::None,
             recreate_swapchain: false,
 
-            scene: Scene::new(),
+            loaded_scenes: Vec::new(),
 
             stats: EngineStats::default(),
             debug: EngineDebug::default(),
@@ -203,11 +215,16 @@ impl Engine {
         Ok(engine)
     }
 
+    // TODO: return an ID for the scene
     pub fn load_scene<P>(&mut self, filepath: P) -> anyhow::Result<()>
     where
         P: AsRef<Path>,
     {
-        self.scene.load(filepath)?;
+        let mut scene = Scene::default();
+        scene.load(self.dispatcher.world_mut(), filepath)?;
+        self.loaded_scenes.push(scene);
+
+        self.dispatcher.setup();
 
         /*self.scene.vertex_buffer = self.renderer.create_vertex_buffer(vec![
             renderer::Vertex {
@@ -244,11 +261,18 @@ impl Engine {
         Ok(())
     }
 
+    // TODO: take in the ID of the scene to unload
+    pub fn unload_scene(&mut self) {
+        // TODO: unload the scene
+    }
+
     pub fn run(&mut self) -> anyhow::Result<()> {
         info!("Running...");
 
         loop {
             self.stats.last_frame_start = Utc::now();
+
+            self.dispatcher.dispatch();
 
             self.renderer.begin_frame();
 
@@ -274,6 +298,8 @@ impl Engine {
             // TODO: render debug data
 
             let _draw_data = ui.render();*/
+
+            self.dispatcher.world_mut().maintain();
 
             self.stats.frame_count += 1;
             self.stats.log_frame_stats();
